@@ -44,9 +44,7 @@ class Sidebar extends StatelessWidget {
 
           // Nav items
           SidebarItem(icon: Icons.dashboard, label: "Dashboard", active: selectedIndex == 0, onTap: () => onItemSelected?.call(0)),
-          SidebarItem(icon: Icons.folder, label: "Projects", active: selectedIndex == 1, onTap: () => onItemSelected?.call(1)),
-          SidebarItem(icon: Icons.rate_review, label: "Reviews", active: selectedIndex == 2, onTap: () => onItemSelected?.call(2)),
-          SidebarItem(icon: Icons.group, label: "Team", active: selectedIndex == 3, onTap: () => onItemSelected?.call(3)),
+          SidebarItem(icon: Icons.group, label: "Employees", active: selectedIndex == 1, onTap: () => onItemSelected?.call(1)),
           const Spacer(),
 
           

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:quality_review/pages/projects_page.dart';
-import 'package:quality_review/pages/reviews_page.dart' ;
-import 'package:quality_review/pages/team_page.dart';
+import 'package:get/get.dart';
+import 'package:quality_review/pages/login.dart';
+import 'pages/team_page.dart';
 import 'components/sidebar.dart';
 import 'pages/dashboard_page.dart';
 
@@ -14,10 +14,14 @@ class MyApp extends StatelessWidget {
  
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return GetMaterialApp(
       title: 'Quality Review Dashboard',
       debugShowCheckedModeBanner: false,
-      home: const MainLayout(),
+      theme: ThemeData(
+        scaffoldBackgroundColor: Colors.grey[50],
+        useMaterial3: false,
+      ),
+      home:  LoginPage(),
     );
   }
 }
@@ -32,11 +36,9 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   int selectedIndex = 0;
 
-  final pages = const [
-    DashboardPage(),
-    ProjectsPage(),
-    ReviewsPage(),
-    TeamPage(),
+  final pages = [
+  DashboardPage(),
+  TeamPage(),
   ];
 
   @override
@@ -49,13 +51,9 @@ class _MainLayoutState extends State<MainLayout> {
             width: 250,
             decoration: const BoxDecoration(
               color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 8,
-                  offset: Offset(2, 0),
-                ),
-              ],
+              border: Border.fromBorderSide(BorderSide(color: Colors.black12)),
+              
+              
             ),
             child: Sidebar(
               selectedIndex: selectedIndex,
