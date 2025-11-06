@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-<<<<<<< HEAD:lib/pages/employee_page.dart
-class EmployeePage extends StatelessWidget {
-  const EmployeePage({super.key});
-=======
 import '../controllers/team_controller.dart';
 import '../models/team_member.dart';
 
 class TeamPage extends StatefulWidget {
   const TeamPage({super.key});
->>>>>>> d9a0eb349db24bcd618379ca0ee92bab663ce1d3:lib/pages/team_page.dart
 
   @override
   State<TeamPage> createState() => _TeamPageState();
