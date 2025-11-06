@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:quality_review/pages/login.dart';
-import 'pages/team_page.dart';
+import 'pages/admin_pages/team_page.dart';
 import 'components/sidebar.dart';
-import 'pages/dashboard_page.dart';
+import 'pages/admin_pages/dashboard_page.dart';
 
 void main() {
   runApp(const MyApp());
@@ -11,7 +11,7 @@ void main() {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
- 
+
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
@@ -21,7 +21,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.grey[50],
         useMaterial3: false,
       ),
-      home:  LoginPage(),
+      home: LoginPage(),
     );
   }
 }
@@ -36,10 +36,7 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   int selectedIndex = 0;
 
-  final pages = [
-  DashboardPage(),
-  TeamPage(),
-  ];
+  final pages = [DashboardPage(), TeamPage()];
 
   @override
   Widget build(BuildContext context) {
@@ -52,8 +49,6 @@ class _MainLayoutState extends State<MainLayout> {
             decoration: const BoxDecoration(
               color: Colors.white,
               border: Border.fromBorderSide(BorderSide(color: Colors.black12)),
-              
-              
             ),
             child: Sidebar(
               selectedIndex: selectedIndex,

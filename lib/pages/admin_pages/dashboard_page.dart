@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../models/project.dart';
-import '../controllers/projects_controller.dart';
+import '../../models/project.dart';
+import '../../controllers/projects_controller.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../controllers/team_controller.dart';
-import '../models/team_member.dart';
+import '../../controllers/team_controller.dart';
+import '../../models/team_member.dart';
 
 class TeamPage extends StatefulWidget {
   const TeamPage({super.key});
