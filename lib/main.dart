@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:quality_review/pages/projects_page.dart';
-import 'package:quality_review/pages/reviews_page.dart' ;
-import 'package:quality_review/pages/team_page.dart';
+import 'package:quality_review/pages/employee_page.dart';
 import 'components/sidebar.dart';
 import 'pages/dashboard_page.dart';
 
@@ -35,8 +34,8 @@ class _MainLayoutState extends State<MainLayout> {
   final pages = const [
     DashboardPage(),
     ProjectsPage(),
-    ReviewsPage(),
-    TeamPage(),
+    // ReviewsPage(),
+    EmployeePage(),
   ];
 
   @override

@@ -5,7 +5,12 @@ class Sidebar extends StatelessWidget {
   final int selectedIndex;
   final void Function(int)? onItemSelected;
 
-  const Sidebar({super.key, this.onCreate, this.selectedIndex = 0, this.onItemSelected});
+  const Sidebar({
+    super.key,
+    this.onCreate,
+    this.selectedIndex = 0,
+    this.onItemSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -32,10 +37,7 @@ class Sidebar extends StatelessWidget {
                 child: Text(
                   "Dashboard",
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
                 ),
               ),
             ],
@@ -43,13 +45,27 @@ class Sidebar extends StatelessWidget {
           const SizedBox(height: 32),
 
           // Nav items
-          SidebarItem(icon: Icons.dashboard, label: "Dashboard", active: selectedIndex == 0, onTap: () => onItemSelected?.call(0)),
-          SidebarItem(icon: Icons.folder, label: "Projects", active: selectedIndex == 1, onTap: () => onItemSelected?.call(1)),
-          SidebarItem(icon: Icons.rate_review, label: "Reviews", active: selectedIndex == 2, onTap: () => onItemSelected?.call(2)),
-          SidebarItem(icon: Icons.group, label: "Team", active: selectedIndex == 3, onTap: () => onItemSelected?.call(3)),
+          SidebarItem(
+            icon: Icons.dashboard,
+            label: "Dashboard",
+            active: selectedIndex == 0,
+            onTap: () => onItemSelected?.call(0),
+          ),
+          SidebarItem(
+            icon: Icons.folder,
+            label: "Projects",
+            active: selectedIndex == 1,
+            onTap: () => onItemSelected?.call(1),
+          ),
+          // SidebarItem(icon: Icons.rate_review, label: "Reviews", active: selectedIndex == 2, onTap: () => onItemSelected?.call(2)),
+          SidebarItem(
+            icon: Icons.group,
+            label: "Employee",
+            active: selectedIndex == 3,
+            onTap: () => onItemSelected?.call(3),
+          ),
           const Spacer(),
 
-          
           const SizedBox(height: 16),
 
           const Divider(),
@@ -58,16 +74,17 @@ class Sidebar extends StatelessWidget {
           // Profile
           Row(
             children: [
-              const CircleAvatar(
-                radius: 20,
-                child: Icon(Icons.person),
-              ),
+              const CircleAvatar(radius: 20, child: Icon(Icons.person)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    Text("Alex Hartman", style: TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                    Text(
+                      "Alex Hartman",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     Text("Manager", style: TextStyle(color: Colors.grey)),
                   ],
                 ),
@@ -79,9 +96,6 @@ class Sidebar extends StatelessWidget {
     );
   }
 }
-
-
-
 
 class SidebarItem extends StatelessWidget {
   final IconData icon;
@@ -103,7 +117,7 @@ class SidebarItem extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: onTap,
-          child: Container(
+        child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: active ? const Color.fromRGBO(19, 91, 236, 0.1) : null,
@@ -111,8 +125,10 @@ class SidebarItem extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon,
-                  color: active ? const Color(0xFF135BEC) : Colors.grey[700]),
+              Icon(
+                icon,
+                color: active ? const Color(0xFF135BEC) : Colors.grey[700],
+              ),
               const SizedBox(width: 12),
               Text(
                 label,
