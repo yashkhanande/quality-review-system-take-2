@@ -41,25 +41,14 @@ class _TeamPageState extends State<EmployeePage> {
     );
   }
 
-  Widget _statusChip(String text) {
-    Color bg = const Color(0xFFEFF3F7);
-    if (text == 'Active') bg = const Color(0xFFDFF7E6);
-    if (text == 'Inactive') bg = const Color(0xFFF5F7FA);
-    if (text == 'Pending') bg = const Color(0xFFFFF4E5);
-    return Chip(
-      label: Text(text, style: const TextStyle(fontSize: 12)),
-      backgroundColor: bg,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    );
-  }
+  // Status no longer used in admin view; password added instead.
 
   Future<void> _showAddDialog() async {
     final formKey = GlobalKey<FormState>();
     String name = '';
     String email = '';
     String role = 'Member';
-    String status = 'Active';
+    String password = '';
 
     await showDialog<void>(
       context: context,
@@ -87,11 +76,11 @@ class _TeamPageState extends State<EmployeePage> {
                   onChanged: (v) => role = v ?? role,
                   decoration: const InputDecoration(labelText: 'Role *'),
                 ),
-                DropdownButtonFormField<String>(
-                  initialValue: status,
-                  items: ['Active', 'Inactive', 'Pending'].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                  onChanged: (v) => status = v ?? status,
-                  decoration: const InputDecoration(labelText: 'Status *'),
+                TextFormField(
+                  decoration: const InputDecoration(labelText: 'Password *'),
+                  obscureText: true,
+                  validator: (v) => (v == null || v.length < 4) ? 'Min 4 chars' : null,
+                  onSaved: (v) => password = v!.trim(),
                 ),
               ],
             ),
@@ -107,9 +96,10 @@ class _TeamPageState extends State<EmployeePage> {
                     name: name,
                     email: email,
                     role: role,
-                    status: status,
+                    status: 'Active', // retain existing model field but hidden in UI
                     dateAdded: DateTime.now().toIso8601String().split('T').first,
                     lastActive: 'Never',
+                    password: password,
                   );
                   _ctrl.addMember(newMember);
                   Navigator.of(context).pop();
@@ -128,7 +118,7 @@ class _TeamPageState extends State<EmployeePage> {
     String name = m.name;
     String email = m.email;
     String role = m.role;
-    String status = m.status;
+    String password = m.password ?? '';
 
     await showDialog<void>(
       context: context,
@@ -158,11 +148,12 @@ class _TeamPageState extends State<EmployeePage> {
                   onChanged: (v) => role = v ?? role,
                   decoration: const InputDecoration(labelText: 'Role *'),
                 ),
-                DropdownButtonFormField<String>(
-                  initialValue: status,
-                  items: ['Active', 'Inactive', 'Pending'].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                  onChanged: (v) => status = v ?? status,
-                  decoration: const InputDecoration(labelText: 'Status *'),
+                TextFormField(
+                  initialValue: password,
+                  decoration: const InputDecoration(labelText: 'Password *'),
+                  obscureText: true,
+                  validator: (v) => (v == null || v.length < 4) ? 'Min 4 chars' : null,
+                  onSaved: (v) => password = v!.trim(),
                 ),
               ],
             ),
@@ -173,7 +164,7 @@ class _TeamPageState extends State<EmployeePage> {
               onPressed: () {
                 if (formKey.currentState?.validate() ?? false) {
                   formKey.currentState?.save();
-                  final updated = m.copyWith(name: name, email: email, role: role, status: status);
+                  final updated = m.copyWith(name: name, email: email, role: role, password: password);
                   _ctrl.updateMember(m.id, updated);
                   Navigator.of(context).pop();
                 }
@@ -255,7 +246,7 @@ class _TeamPageState extends State<EmployeePage> {
                               ),
                               const DataColumn(label: Text('Email')),
                               const DataColumn(label: Text('Role')),
-                              const DataColumn(label: Text('Status')),
+                              const DataColumn(label: Text('Password')),
                               DataColumn(
                                 label: const Text('Date Added'),
                                 onSort: (colIndex, asc) {
@@ -274,7 +265,7 @@ class _TeamPageState extends State<EmployeePage> {
                                 DataCell(Row(children: [CircleAvatar(radius: 18, child: Text(e.name[0])), const SizedBox(width: 12), Text(e.name)])),
                                 DataCell(Text(e.email)),
                                 DataCell(_roleChip(e.role)),
-                                DataCell(_statusChip(e.status)),
+                                DataCell(Text(e.password != null && e.password!.isNotEmpty ? '••••••' : 'Not Set')),
                                 DataCell(Text(e.dateAdded)),
                                 DataCell(Text(e.lastActive)),
                                 DataCell(Row(children: [IconButton(onPressed: () => _showEditDialog(e), icon: const Icon(Icons.edit, size: 20)), IconButton(onPressed: () => _confirmDelete(e), icon: const Icon(Icons.delete_outline, size: 20))])),
@@ -313,14 +304,7 @@ class _TeamPageState extends State<EmployeePage> {
                           CheckboxListTile(value: _ctrl.selectedRoles.contains('Reviewer'), onChanged: (v) => v == true ? _ctrl.selectedRoles.add('Reviewer') : _ctrl.selectedRoles.remove('Reviewer'), title: const Text('Reviewer')),
                         ])),
                         const SizedBox(height: 12),
-                        const Text('Filter by Status', style: TextStyle(fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 8),
-                        Obx(() => Column(children: [
-                          CheckboxListTile(value: _ctrl.selectedStatuses.contains('Active'), onChanged: (v) => v == true ? _ctrl.selectedStatuses.add('Active') : _ctrl.selectedStatuses.remove('Active'), title: const Text('Active')),
-                          CheckboxListTile(value: _ctrl.selectedStatuses.contains('Inactive'), onChanged: (v) => v == true ? _ctrl.selectedStatuses.add('Inactive') : _ctrl.selectedStatuses.remove('Inactive'), title: const Text('Inactive')),
-                          CheckboxListTile(value: _ctrl.selectedStatuses.contains('Pending'), onChanged: (v) => v == true ? _ctrl.selectedStatuses.add('Pending') : _ctrl.selectedStatuses.remove('Pending'), title: const Text('Pending')),
-                        ])),
-                        const SizedBox(height: 12),
+                        // Status filters removed.
                         ElevatedButton(
                           onPressed: () => _ctrl.clearFilters(),
                           style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF2F5F8), foregroundColor: Colors.black),

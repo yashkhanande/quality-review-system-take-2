@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../models/project.dart';
 import '../../controllers/projects_controller.dart';
+import 'admin_project_details_page.dart';
 
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
@@ -13,8 +14,6 @@ class AdminDashboardPage extends StatefulWidget {
 
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   late final ProjectsController _ctrl;
-  int? _sortColumnIndex;
-  bool _sortAscending = true;
 
   @override
   void initState() {
@@ -38,6 +37,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     String priority = 'Medium';
     String status = 'Not Started';
     String? executor;
+  String description = '';
 
     await showDialog<void>(
       context: context,
@@ -93,6 +93,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   onChanged: (v) => executor = v,
                   decoration: const InputDecoration(labelText: 'Executor (optional)'),
                 ),
+                TextFormField(
+                  maxLines: 3,
+                  decoration: const InputDecoration(labelText: 'Description *'),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter description' : null,
+                  onSaved: (v) => description = v!.trim(),
+                ),
               ],
             ),
           ),
@@ -110,6 +116,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     status: status,
                     executor: (executor == null || executor?.isEmpty == true) ? null : executor,
                   );
+                  // Store description separately via a side map (temporary, until model extended).
+                  _descriptions[newProject.id] = description;
                   _ctrl.addProject(newProject);
                   Navigator.of(context).pop();
                 }
@@ -158,7 +166,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Good Morning, Shamrao', style: Theme.of(context).textTheme.headlineMedium),
+                  Text('Welcome Back!', style: Theme.of(context).textTheme.headlineMedium),
                   ElevatedButton.icon(
                     onPressed: _showCreateDialog,
                     icon: const Icon(Icons.add),
@@ -168,73 +176,71 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 ],
               ),
               const SizedBox(height: 16),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
+              // Tabular layout using ListView + Rows
+              Obx(() {
+                final projects = _ctrl.projects;
+                return Column(
+                  children: [
+                    // Header row
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(6),
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0,2))],
+                      ),
+                      child: Row(
+                        children: const [
+                          Expanded(flex: 3, child: Text('Project Title', style: TextStyle(fontWeight: FontWeight.w600))),
+                          Expanded(flex: 2, child: Text('Started', style: TextStyle(fontWeight: FontWeight.w600))),
+                          Expanded(flex: 1, child: Text('Priority', style: TextStyle(fontWeight: FontWeight.w600))),
+                          Expanded(flex: 1, child: Text('Status', style: TextStyle(fontWeight: FontWeight.w600))),
+                          Expanded(flex: 2, child: Text('Executor', style: TextStyle(fontWeight: FontWeight.w600))),
+                          Expanded(flex: 2, child: Text('Actions', style: TextStyle(fontWeight: FontWeight.w600))),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: projects.length,
+                      itemBuilder: (context, index) {
+                        final proj = projects[index];
+                        final executor = (proj.status == 'In Progress' || proj.status == 'Completed') ? (proj.executor ?? '--') : '--';
+                        return GestureDetector(
+                          onTap: () => Get.to(() => AdminProjectDetailsPage(project: proj, description: _descriptions[proj.id])),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: Colors.black12),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(flex: 3, child: Text(proj.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                Expanded(flex: 2, child: Text('${proj.started.year}-${proj.started.month.toString().padLeft(2,'0')}-${proj.started.day.toString().padLeft(2,'0')}')),
+                                Expanded(flex: 1, child: _priorityChip(proj.priority)),
+                                Expanded(flex: 1, child: Text(proj.status)),
+                                Expanded(flex: 2, child: Text(executor)),
+                                Expanded(flex: 2, child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(icon: const Icon(Icons.edit), onPressed: () => _showEditDialog(proj)),
+                                    IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _confirmDelete(proj)),
+                                  ],
+                                )),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Obx(() {
-                      final projects = _ctrl.projects;
-                      return DataTable(
-                        sortAscending: _sortAscending,
-                        sortColumnIndex: _sortColumnIndex,
-                        columnSpacing: 90,
-                        columns: [
-                          DataColumn(
-                            label: const Text('Project Title'),
-                            onSort: (colIndex, asc) {
-                              setState(() {
-                                _sortColumnIndex = colIndex;
-                                _sortAscending = asc;
-                                _ctrl.projects.sort((a, b) => asc ? a.title.compareTo(b.title) : b.title.compareTo(a.title));
-                              });
-                            },
-                          ),
-                          DataColumn(
-                            label: const Text('Started Date'),
-                            onSort: (colIndex, asc) {
-                              setState(() {
-                                _sortColumnIndex = colIndex;
-                                _sortAscending = asc;
-                                _ctrl.projects.sort((a, b) => asc ? a.started.compareTo(b.started) : b.started.compareTo(a.started));
-                              });
-                            },
-                          ),
-                          const DataColumn(label: Text('Priority')),
-                          const DataColumn(label: Text('Status')),
-                          const DataColumn(label: Text('Executor')),
-                          const DataColumn(label: Text('Actions')),
-                        ],
-                        rows: projects.map((proj) {
-                          final executor = (proj.status == 'In Progress' || proj.status == 'Completed') ? (proj.executor ?? '--') : '--';
-                          return DataRow(cells: [
-                            DataCell(Container(constraints: const BoxConstraints(maxWidth: 300), child: Text(proj.title))),
-                            DataCell(Text('${proj.started.year}-${proj.started.month.toString().padLeft(2, '0')}-${proj.started.day.toString().padLeft(2, '0')}')),
-                            DataCell(_priorityChip(proj.priority)),
-                            DataCell(Text(proj.status)),
-                            DataCell(Text(executor)),
-                            DataCell(Row(children: [
-                              IconButton(onPressed: () => _showEditDialog(proj), icon: const Icon(Icons.edit, size: 20)),
-                              IconButton(onPressed: () => _confirmDelete(proj), icon: const Icon(Icons.delete_outline, size: 20)),
-                            ])),
-                          ]);
-                        }).toList(),
-                      );
-                    }),
-                  ),
-                ),
-              ),
+                );
+              }),
             ],
           ),
         ),
@@ -249,15 +255,18 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     String priority = project.priority;
     String status = project.status;
     String? executor = project.executor;
+    String description = _descriptions[project.id] ?? '';
 
     await showDialog<void>(
       context: context,
       builder: (context) {
-        return  Container(
-              width: 400,
-              height: 400,
-              color: Colors.black12,
+        return AlertDialog(
+          title: const Text('Edit Project'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   TextFormField(
                     initialValue: title,
@@ -300,28 +309,38 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     onChanged: (v) => executor = v,
                     decoration: const InputDecoration(labelText: 'Executor (optional)'),
                   ),
-                
-             
+                  TextFormField(
+                    initialValue: description,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: 'Description *'),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter description' : null,
+                    onSaved: (v) => description = v!.trim(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
             TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
             ElevatedButton(
-                onPressed: () {
-                  if (formKey.currentState?.validate() ?? false) {
-                    formKey.currentState?.save();
-                    final updated = project.copyWith(
-                      title: title,
-                      started: started,
-                      priority: priority,
-                      status: status,
-                      executor: (executor == null || executor?.isEmpty == true) ? null : executor,
-                    );
-                    _ctrl.updateProject(project.id, updated);
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: const Text('Save'),
-              ),
-                ]
-        )
+              onPressed: () {
+                if (formKey.currentState?.validate() ?? false) {
+                  formKey.currentState?.save();
+                  final updated = project.copyWith(
+                    title: title,
+                    started: started,
+                    priority: priority,
+                    status: status,
+                    executor: (executor == null || executor!.isEmpty) ? null : executor,
+                  );
+                  _ctrl.updateProject(project.id, updated);
+                  _descriptions[project.id] = description;
+                  Navigator.of(context).pop();
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
         );
       },
     );
@@ -341,6 +360,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
     if (confirmed == true) {
       _ctrl.deleteProject(project.id);
+      _descriptions.remove(project.id);
     }
   }
+
+  // Temporary in-memory descriptions store (until Project model updated globally).
+  final Map<String, String> _descriptions = {};
 }

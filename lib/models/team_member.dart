@@ -6,6 +6,7 @@ class TeamMember {
   String status;
   String dateAdded;
   String lastActive;
+  String? password;
 
   TeamMember({
     required this.id,
@@ -15,6 +16,7 @@ class TeamMember {
     required this.status,
     required this.dateAdded,
     required this.lastActive,
+  this.password,
   });
 
   TeamMember copyWith({
@@ -25,6 +27,7 @@ class TeamMember {
     String? status,
     String? dateAdded,
     String? lastActive,
+    String? password,
   }) {
     return TeamMember(
       id: id ?? this.id,
@@ -34,6 +37,7 @@ class TeamMember {
       status: status ?? this.status,
       dateAdded: dateAdded ?? this.dateAdded,
       lastActive: lastActive ?? this.lastActive,
+      password: password ?? this.password,
     );
   }
 }
