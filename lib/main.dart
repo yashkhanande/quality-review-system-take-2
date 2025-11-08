@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:quality_review/pages/login.dart';
+import 'bindings/app_bindings.dart';
 
 void main() {
   runApp(const MyApp());
@@ -18,7 +19,8 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.grey[50],
         useMaterial3: false,
       ),
-      home: LoginPage(),
+  initialBinding: AppBindings(),
+  home: LoginPage(),
     );
   }
 }

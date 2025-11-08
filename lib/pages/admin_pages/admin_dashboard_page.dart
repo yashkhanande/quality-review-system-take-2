@@ -3,76 +3,22 @@ import 'package:get/get.dart';
 
 import '../../models/project.dart';
 import '../../controllers/projects_controller.dart';
+import '../../controllers/admin_dashboard_ui_controller.dart';
+import '../../components/admin_dialog.dart';
 import 'admin_project_details_page.dart';
 
-class AdminDashboardPage extends StatefulWidget {
+class AdminDashboardPage extends StatelessWidget {
   const AdminDashboardPage({super.key});
 
-  @override
-  State<AdminDashboardPage> createState() => _AdminDashboardPageState();
-}
-
-class _AdminDashboardPageState extends State<AdminDashboardPage> {
-  late final ProjectsController _ctrl;
-  final TextEditingController _searchCtrl = TextEditingController();
-  String _searchQuery = '';
-  String _sortKey = 'started';
-  bool _ascending = false; // default: newest first
-  int? _hoverIndex;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = Get.put(ProjectsController());
-
-    if (_ctrl.projects.isEmpty) {
-      _ctrl.loadInitial([
-        Project(
-          id: 'p1',
-          title: 'Implement New CRM System',
-          started: DateTime(2024, 6, 1),
-          priority: 'High',
-          status: 'In Progress',
-          executor: 'Emily Carter',
-        ),
-        Project(
-          id: 'p2',
-          title: 'Develop Marketing Strategy',
-          started: DateTime(2024, 5, 20),
-          priority: 'Medium',
-          status: 'Completed',
-          executor: 'David Lee',
-        ),
-        Project(
-          id: 'p3',
-          title: 'Conduct Market Research',
-          started: DateTime(2024, 6, 10),
-          priority: 'Low',
-          status: 'Not Started',
-          executor: null,
-        ),
-        Project(
-          id: 'p4',
-          title: 'Build Analytics Dashboard',
-          started: DateTime(2024, 5, 5),
-          priority: 'High',
-          status: 'In Progress',
-          executor: 'Sophia Clark',
-        ),
-      ]);
-    }
-  }
-
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
-
-  List<Project> get _visibleProjects {
-    List<Project> list = _ctrl.projects.toList();
-    if (_searchQuery.trim().isNotEmpty) {
-      final q = _searchQuery.toLowerCase();
+  List<Project> _visibleProjects(
+    List<Project> source,
+    String search,
+    String sortKey,
+    bool ascending,
+  ) {
+    List<Project> list = source.toList();
+    if (search.trim().isNotEmpty) {
+      final q = search.toLowerCase();
       list = list.where((p) {
         final exec = p.executor ?? '';
         return p.title.toLowerCase().contains(q) ||
@@ -83,7 +29,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
     int cmp(Project a, Project b) {
       int res = 0;
-      switch (_sortKey) {
+      switch (sortKey) {
         case 'title':
           res = a.title.toLowerCase().compareTo(b.title.toLowerCase());
           break;
@@ -98,30 +44,33 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           res = a.status.toLowerCase().compareTo(b.status.toLowerCase());
           break;
         case 'executor':
-          res = (a.executor ?? '').toLowerCase().compareTo(
-            (b.executor ?? '').toLowerCase(),
-          );
+          res = (a.executor ?? '').toLowerCase().compareTo((b.executor ?? '').toLowerCase());
           break;
       }
-      return _ascending ? res : -res;
+      return ascending ? res : -res;
     }
-
     list.sort(cmp);
     return list;
   }
 
-  void _toggleSort(String key) {
-    setState(() {
-      if (_sortKey == key) {
-        _ascending = !_ascending;
-      } else {
-        _sortKey = key;
-        _ascending = true;
-      }
-    });
+  void _ensureSeed(ProjectsController ctrl) {
+    if (ctrl.projects.isEmpty) {
+      ctrl.loadInitial([
+        Project(id: 'p1', title: 'Implement New CRM System', started: DateTime(2024, 6, 1), priority: 'High', status: 'In Progress', executor: 'Emily Carter'),
+        Project(id: 'p2', title: 'Develop Marketing Strategy', started: DateTime(2024, 5, 20), priority: 'Medium', status: 'Completed', executor: 'David Lee'),
+        Project(id: 'p3', title: 'Conduct Market Research', started: DateTime(2024, 6, 10), priority: 'Low', status: 'Not Started', executor: null),
+        Project(id: 'p4', title: 'Build Analytics Dashboard', started: DateTime(2024, 5, 5), priority: 'High', status: 'In Progress', executor: 'Sophia Clark'),
+      ]);
+    }
   }
 
-  List<String> get _executors => const [
+  @override
+  Widget build(BuildContext context) {
+  final projCtrl = Get.find<ProjectsController>();
+  final ui = Get.find<AdminDashboardUIController>();
+    _ensureSeed(projCtrl);
+
+    List<String> _executors() => const [
     'Emma Carter',
     'Liam Walker',
     'Olivia Harris',
@@ -133,51 +82,36 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     'Isabella King',
   ];
 
-  Future<void> _showCreateDialog() async {
-    await showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black54,
-      barrierLabel: 'Create Project Dialog',
-      transitionDuration: const Duration(milliseconds: 250),
-      pageBuilder: (_, _, _) => const SizedBox.shrink(),
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return ScaleTransition(
-          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
-          child: Center(
-            child: _ProjectFormDialog(
-              title: 'Create New Project',
-              executors: _executors,
-              titleValidator: (t) {
-                final exists = _ctrl.projects.any(
-                  (p) => p.title.toLowerCase() == t.toLowerCase(),
-                );
-                return exists
-                    ? 'A project with this title already exists'
-                    : null;
-              },
-
-              width: 1000,
-              showStatus: false,
-              showExecutor: false,
-              onSubmit: (data) {
-                final newProject = Project(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  title: data.title,
-                  description: data.description,
-                  started: data.started,
-                  priority: data.priority,
-                  status: 'Not Started',
-                  executor: null,
-                );
-                _ctrl.addProject(newProject);
-              },
-            ),
-          ),
-        );
-      },
-    );
-  }
+    Future<void> _showCreateDialog() async {
+      await showAdminDialog(
+        context,
+        title: 'Create New Project',
+        width: 1000,
+        child: _ProjectFormDialog(
+          title: 'Create New Project',
+          executors: _executors(),
+          titleValidator: (t) {
+            final exists = projCtrl.projects.any((p) => p.title.toLowerCase() == t.toLowerCase());
+            return exists ? 'A project with this title already exists' : null;
+          },
+          width: 1000,
+          showStatus: false,
+          showExecutor: false,
+          onSubmit: (data) {
+            final newProject = Project(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              title: data.title,
+              description: data.description,
+              started: data.started,
+              priority: data.priority,
+              status: 'Not Started',
+              executor: null,
+            );
+            projCtrl.addProject(newProject);
+          },
+        ),
+      );
+    }
 
   // ...
 
@@ -191,9 +125,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
+  return Scaffold(
       backgroundColor: Colors.grey[50],
       body: SingleChildScrollView(
         child: Padding(
@@ -236,7 +168,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   ],
                 ),
                 child: TextField(
-                  controller: _searchCtrl,
                   decoration: const InputDecoration(
                     hintText: 'Search by title, status, priority, executor...',
                     prefixIcon: Icon(Icons.search),
@@ -246,13 +177,42 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       vertical: 14,
                     ),
                   ),
-                  onChanged: (v) => setState(() => _searchQuery = v),
+                  onChanged: ui.setSearch,
                 ),
               ),
               const SizedBox(height: 16),
+              // Loading / Error states (reactive)
+              Obx(() {
+                if (projCtrl.isLoading.value) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24.0),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final err = projCtrl.errorMessage.value;
+                if (err.isNotEmpty) {
+                  return Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3F3),
+                      border: Border.all(color: const Color(0xFFFFC8C8)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text('Error: $err', style: const TextStyle(color: Colors.redAccent)),
+                  );
+                }
+                return const SizedBox.shrink();
+              }),
               // Tabular layout using ListView + Rows
               Obx(() {
-                final projects = _visibleProjects;
+                // Access reactive sources to make this builder reactive
+                final rxProjects = projCtrl.projects;
+                final search = ui.searchQuery.value;
+                final sortKey = ui.sortKey.value;
+                final asc = ui.ascending.value;
+                final projects = _visibleProjects(rxProjects, search, sortKey, asc);
                 return Column(
                   children: [
                     // Header row
@@ -272,51 +232,51 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                           ),
                         ],
                       ),
-                      child: Row(
+          child: Row(
                         children: [
-                          Expanded(
+              Expanded(
                             flex: 3,
                             child: _HeaderCell(
                               label: 'Project Title',
-                              active: _sortKey == 'title',
-                              ascending: _ascending,
-                              onTap: () => _toggleSort('title'),
+            active: sortKey == 'title',
+            ascending: asc,
+                onTap: () => ui.toggleSort('title'),
                             ),
                           ),
-                          Expanded(
+              Expanded(
                             flex: 2,
                             child: _HeaderCell(
                               label: 'Started',
-                              active: _sortKey == 'started',
-                              ascending: _ascending,
-                              onTap: () => _toggleSort('started'),
+                              active: sortKey == 'started',
+                              ascending: asc,
+                onTap: () => ui.toggleSort('started'),
                             ),
                           ),
-                          Expanded(
+              Expanded(
                             flex: 1,
                             child: _HeaderCell(
                               label: 'Priority',
-                              active: _sortKey == 'priority',
-                              ascending: _ascending,
-                              onTap: () => _toggleSort('priority'),
+                              active: sortKey == 'priority',
+                              ascending: asc,
+                onTap: () => ui.toggleSort('priority'),
                             ),
                           ),
-                          Expanded(
+              Expanded(
                             flex: 1,
                             child: _HeaderCell(
                               label: 'Status',
-                              active: _sortKey == 'status',
-                              ascending: _ascending,
-                              onTap: () => _toggleSort('status'),
+                              active: sortKey == 'status',
+                              ascending: asc,
+                onTap: () => ui.toggleSort('status'),
                             ),
                           ),
-                          Expanded(
+              Expanded(
                             flex: 2,
                             child: _HeaderCell(
                               label: 'Executor',
-                              active: _sortKey == 'executor',
-                              ascending: _ascending,
-                              onTap: () => _toggleSort('executor'),
+                              active: sortKey == 'executor',
+                              ascending: asc,
+                onTap: () => ui.toggleSort('executor'),
                             ),
                           ),
                           // Actions column removed (moved to details page)
@@ -324,25 +284,24 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ListView.builder(
+          ListView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: projects.length,
                       itemBuilder: (context, index) {
                         final proj = projects[index];
-            final executor =
-              (proj.status == 'In Progress' || proj.status == 'Completed')
-                ? ((proj.executor?.trim().isNotEmpty ?? false) ? proj.executor!.trim() : '--')
-                : '--';
-                        final hovered = _hoverIndex == index;
+            final executor = (proj.status == 'In Progress' || proj.status == 'Completed')
+              ? ((proj.executor?.trim().isNotEmpty ?? false) ? proj.executor!.trim() : '--')
+              : '--';
+                        final hovered = ui.hoverIndex.value == index;
                         return MouseRegion(
-                          onEnter: (_) => setState(() => _hoverIndex = index),
-                          onExit: (_) => setState(() => _hoverIndex = null),
+              onEnter: (_) => ui.setHover(index),
+              onExit: (_) => ui.clearHover(),
                           child: GestureDetector(
                             onTap: () => Get.to(
                               () => AdminProjectDetailsPage(
                                 project: proj,
-                                description: proj.description,
+                                descriptionOverride: proj.description,
                               ),
                             ),
                             child: AnimatedContainer(
