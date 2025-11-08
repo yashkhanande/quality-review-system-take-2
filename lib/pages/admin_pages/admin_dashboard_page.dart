@@ -14,6 +14,11 @@ class AdminDashboardPage extends StatefulWidget {
 
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   late final ProjectsController _ctrl;
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+  String _sortKey = 'started';
+  bool _ascending = false; // default: newest first
+  int? _hoverIndex;
 
   @override
   void initState() {
@@ -30,120 +35,116 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
   }
 
-  Future<void> _showCreateDialog() async {
-    final formKey = GlobalKey<FormState>();
-    String title = '';
-    DateTime started = DateTime.now();
-    String priority = 'Medium';
-    String status = 'Not Started';
-    String? executor;
-  String description = '';
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
-    await showDialog<void>(
+  List<Project> get _visibleProjects {
+    List<Project> list = _ctrl.projects.toList();
+    if (_searchQuery.trim().isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      list = list.where((p) {
+        final exec = p.executor ?? '';
+        return p.title.toLowerCase().contains(q) ||
+            p.status.toLowerCase().contains(q) ||
+            p.priority.toLowerCase().contains(q) ||
+            exec.toLowerCase().contains(q);
+      }).toList();
+    }
+    int cmp(Project a, Project b) {
+      int res = 0;
+      switch (_sortKey) {
+        case 'title':
+          res = a.title.toLowerCase().compareTo(b.title.toLowerCase());
+          break;
+        case 'started':
+          res = a.started.compareTo(b.started);
+          break;
+        case 'priority':
+          const order = {'High': 0, 'Medium': 1, 'Low': 2};
+          res = (order[a.priority] ?? 9).compareTo(order[b.priority] ?? 9);
+          break;
+        case 'status':
+          res = a.status.toLowerCase().compareTo(b.status.toLowerCase());
+          break;
+        case 'executor':
+          res = (a.executor ?? '').toLowerCase().compareTo((b.executor ?? '').toLowerCase());
+          break;
+      }
+      return _ascending ? res : -res;
+    }
+    list.sort(cmp);
+    return list;
+  }
+
+  void _toggleSort(String key) {
+    setState(() {
+      if (_sortKey == key) {
+        _ascending = !_ascending;
+      } else {
+        _sortKey = key;
+        _ascending = true;
+      }
+    });
+  }
+
+  List<String> get _executors => const [
+        'Emma Carter',
+        'Liam Walker',
+        'Olivia Harris',
+        'Noah Clark',
+        'Ava Lewis',
+        'William Hall',
+        'Sophia Young',
+        'James Wright',
+        'Isabella King'
+      ];
+
+  Future<void> _showCreateDialog() async {
+    await showGeneralDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Create New Project'),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  decoration: const InputDecoration(labelText: 'Project Title *'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter title' : null,
-                  onSaved: (v) => title = v!.trim(),
-                ),
-                // Date picker field
-                TextFormField(
-                  readOnly: true,
-                  controller: TextEditingController(text: '${started.year}-${started.month.toString().padLeft(2,'0')}-${started.day.toString().padLeft(2,'0')}'),
-                  decoration: const InputDecoration(labelText: 'Started Date *'),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: started,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) {
-                      started = picked;
-                      // trigger a rebuild of the dialog content
-                      (context as Element).markNeedsBuild();
-                    }
-                  },
-                  validator: null,
-                ),
-                DropdownButtonFormField<String>(
-                  initialValue: priority,
-                  items: ['High', 'Medium', 'Low'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                  onChanged: (v) => priority = v ?? priority,
-                  decoration: const InputDecoration(labelText: 'Priority *'),
-                ),
-                DropdownButtonFormField<String>(
-                  initialValue: status,
-                  items: ['In Progress', 'Completed', 'Not Started'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                  onChanged: (v) => status = v ?? status,
-                  decoration: const InputDecoration(labelText: 'Status *'),
-                ),
-                // Executor dropdown populated from team members
-                DropdownButtonFormField<String>(
-                  initialValue: executor,
-                  items: _teamNames().map((n) => DropdownMenuItem(value: n, child: Text(n))).toList(),
-                  onChanged: (v) => executor = v,
-                  decoration: const InputDecoration(labelText: 'Executor (optional)'),
-                ),
-                TextFormField(
-                  maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'Description *'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter description' : null,
-                  onSaved: (v) => description = v!.trim(),
-                ),
-              ],
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+  barrierLabel: 'Create Project Dialog',
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          child: Center(
+            child: _ProjectFormDialog(
+              title: 'Create New Project',
+              executors: _executors,
+              titleValidator: (t) {
+                final exists = _ctrl.projects.any((p) => p.title.toLowerCase() == t.toLowerCase());
+                return exists ? 'A project with this title already exists' : null;
+              },
+              width: 760,
+        showStatus: false,
+        showExecutor: false,
+              onSubmit: (data) {
+                final newProject = Project(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  title: data.title,
+                  started: data.started,
+                  priority: data.priority,
+          status: 'Not Started',
+          executor: null,
+                );
+                _descriptions[newProject.id] = data.description;
+                _ctrl.addProject(newProject);
+              },
             ),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () {
-                if (formKey.currentState?.validate() ?? false) {
-                  formKey.currentState?.save();
-                  final newProject = Project(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
-                    title: title,
-                    started: started,
-                    priority: priority,
-                    status: status,
-                    executor: (executor == null || executor?.isEmpty == true) ? null : executor,
-                  );
-                  // Store description separately via a side map (temporary, until model extended).
-                  _descriptions[newProject.id] = description;
-                  _ctrl.addProject(newProject);
-                  Navigator.of(context).pop();
-                }
-              },
-              child: const Text('Create'),
-            ),
-          ],
         );
       },
     );
   }
+  
 
-  // Helper: read team names from team page initial data (light coupling)
-  List<String> _teamNames() {
-    return const [
-      'Emma Carter',
-      'Liam Walker',
-      'Olivia Harris',
-      'Noah Clark',
-      'Ava Lewis',
-      'William Hall',
-      'Sophia Young',
-      'James Wright',
-      'Isabella King'
-    ];
-  }
+  // ...
 
   Widget _priorityChip(String p) {
     Color bg = const Color(0xFFEFF3F7);
@@ -175,10 +176,29 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              // Search bar
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                ),
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: const InputDecoration(
+                    hintText: 'Search by title, status, priority, executor...',
+                    prefixIcon: Icon(Icons.search),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  ),
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                ),
+              ),
               const SizedBox(height: 16),
               // Tabular layout using ListView + Rows
               Obx(() {
-                final projects = _ctrl.projects;
+                final projects = _visibleProjects;
                 return Column(
                   children: [
                     // Header row
@@ -190,13 +210,56 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0,2))],
                       ),
                       child: Row(
-                        children: const [
-                          Expanded(flex: 3, child: Text('Project Title', style: TextStyle(fontWeight: FontWeight.w600))),
-                          Expanded(flex: 2, child: Text('Started', style: TextStyle(fontWeight: FontWeight.w600))),
-                          Expanded(flex: 1, child: Text('Priority', style: TextStyle(fontWeight: FontWeight.w600))),
-                          Expanded(flex: 1, child: Text('Status', style: TextStyle(fontWeight: FontWeight.w600))),
-                          Expanded(flex: 2, child: Text('Executor', style: TextStyle(fontWeight: FontWeight.w600))),
-                          Expanded(flex: 2, child: Text('Actions', style: TextStyle(fontWeight: FontWeight.w600))),
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: _HeaderCell(
+                              label: 'Project Title',
+                              active: _sortKey == 'title',
+                              ascending: _ascending,
+                              onTap: () => _toggleSort('title'),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: _HeaderCell(
+                              label: 'Started',
+                              active: _sortKey == 'started',
+                              ascending: _ascending,
+                              onTap: () => _toggleSort('started'),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: _HeaderCell(
+                              label: 'Priority',
+                              active: _sortKey == 'priority',
+                              ascending: _ascending,
+                              onTap: () => _toggleSort('priority'),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: _HeaderCell(
+                              label: 'Status',
+                              active: _sortKey == 'status',
+                              ascending: _ascending,
+                              onTap: () => _toggleSort('status'),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: _HeaderCell(
+                              label: 'Executor',
+                              active: _sortKey == 'executor',
+                              ascending: _ascending,
+                              onTap: () => _toggleSort('executor'),
+                            ),
+                          ),
+                          const Expanded(
+                            flex: 2,
+                            child: Text('Actions', style: TextStyle(fontWeight: FontWeight.w600)),
+                          ),
                         ],
                       ),
                     ),
@@ -208,31 +271,42 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       itemBuilder: (context, index) {
                         final proj = projects[index];
                         final executor = (proj.status == 'In Progress' || proj.status == 'Completed') ? (proj.executor ?? '--') : '--';
-                        return GestureDetector(
-                          onTap: () => Get.to(() => AdminProjectDetailsPage(project: proj, description: _descriptions[proj.id])),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.black12),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(flex: 3, child: Text(proj.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                Expanded(flex: 2, child: Text('${proj.started.year}-${proj.started.month.toString().padLeft(2,'0')}-${proj.started.day.toString().padLeft(2,'0')}')),
-                                Expanded(flex: 1, child: _priorityChip(proj.priority)),
-                                Expanded(flex: 1, child: Text(proj.status)),
-                                Expanded(flex: 2, child: Text(executor)),
-                                Expanded(flex: 2, child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(icon: const Icon(Icons.edit), onPressed: () => _showEditDialog(proj)),
-                                    IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _confirmDelete(proj)),
-                                  ],
-                                )),
-                              ],
+                        final hovered = _hoverIndex == index;
+                        return MouseRegion(
+                          onEnter: (_) => setState(() => _hoverIndex = index),
+                          onExit: (_) => setState(() => _hoverIndex = null),
+                          child: GestureDetector(
+                            onTap: () => Get.to(() => AdminProjectDetailsPage(project: proj, description: _descriptions[proj.id])),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              curve: Curves.easeOut,
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: hovered ? const Color(0xFFF7F9FC) : Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: hovered ? Colors.blue.shade200 : Colors.black12),
+                                boxShadow: hovered ? const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0,2))] : null,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(flex: 3, child: Text(proj.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                  Expanded(flex: 2, child: Text('${proj.started.year}-${proj.started.month.toString().padLeft(2,'0')}-${proj.started.day.toString().padLeft(2,'0')}')),
+                                  Expanded(flex: 1, child: _priorityChip(proj.priority)),
+                                  Expanded(flex: 1, child: Text(proj.status)),
+                                  Expanded(flex: 2, child: Text(executor)),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(icon: const Icon(Icons.edit), tooltip: 'Edit', onPressed: () => _showEditDialog(proj)),
+                                        IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: () => _showDeleteDialog(proj)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -247,123 +321,340 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       ),
     );
   }
-
+ 
   Future<void> _showEditDialog(Project project) async {
-    final formKey = GlobalKey<FormState>();
-    String title = project.title;
-    DateTime started = project.started;
-    String priority = project.priority;
-    String status = project.status;
-    String? executor = project.executor;
-    String description = _descriptions[project.id] ?? '';
-
-    await showDialog<void>(
+    await showGeneralDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Edit Project'),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    initialValue: title,
-                    decoration: const InputDecoration(labelText: 'Project Title *'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter title' : null,
-                    onSaved: (v) => title = v!.trim(),
-                  ),
-                  TextFormField(
-                    readOnly: true,
-                    controller: TextEditingController(text: '${started.year}-${started.month.toString().padLeft(2,'0')}-${started.day.toString().padLeft(2,'0')}'),
-                    decoration: const InputDecoration(labelText: 'Started Date *'),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: started,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked != null) {
-                        started = picked;
-                        (context as Element).markNeedsBuild();
-                      }
-                    },
-                  ),
-                  DropdownButtonFormField<String>(
-                    initialValue: priority,
-                    items: ['High', 'Medium', 'Low'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                    onChanged: (v) => priority = v ?? priority,
-                    decoration: const InputDecoration(labelText: 'Priority *'),
-                  ),
-                  DropdownButtonFormField<String>(
-                    initialValue: status,
-                    items: ['In Progress', 'Completed', 'Not Started'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                    onChanged: (v) => status = v ?? status,
-                    decoration: const InputDecoration(labelText: 'Status *'),
-                  ),
-                  DropdownButtonFormField<String>(
-                    initialValue: executor,
-                    items: _teamNames().map((n) => DropdownMenuItem(value: n, child: Text(n))).toList(),
-                    onChanged: (v) => executor = v,
-                    decoration: const InputDecoration(labelText: 'Executor (optional)'),
-                  ),
-                  TextFormField(
-                    initialValue: description,
-                    maxLines: 3,
-                    decoration: const InputDecoration(labelText: 'Description *'),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter description' : null,
-                    onSaved: (v) => description = v!.trim(),
-                  ),
-                ],
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+  barrierLabel: 'Edit Project Dialog',
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          child: Center(
+            child: _ProjectFormDialog(
+              title: 'Edit Project',
+              executors: _executors,
+              titleValidator: (t) {
+                final exists = _ctrl.projects.any((p) => p.id != project.id && p.title.toLowerCase() == t.toLowerCase());
+                return exists ? 'A project with this title already exists' : null;
+              },
+              width: 760,
+              initial: ProjectFormData(
+                title: project.title,
+                started: project.started,
+                priority: project.priority,
+                status: project.status,
+                executor: project.executor ?? '',
+                description: _descriptions[project.id] ?? '',
               ),
+              onSubmit: (data) {
+                final updated = project.copyWith(
+                  title: data.title,
+                  started: data.started,
+                  priority: data.priority,
+                  status: data.status,
+                  executor: (data.executor?.isEmpty ?? true) ? null : data.executor,
+                );
+                _ctrl.updateProject(project.id, updated);
+                _descriptions[project.id] = data.description;
+              },
             ),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () {
-                if (formKey.currentState?.validate() ?? false) {
-                  formKey.currentState?.save();
-                  final updated = project.copyWith(
-                    title: title,
-                    started: started,
-                    priority: priority,
-                    status: status,
-                    executor: (executor == null || executor!.isEmpty) ? null : executor,
-                  );
-                  _ctrl.updateProject(project.id, updated);
-                  _descriptions[project.id] = description;
-                  Navigator.of(context).pop();
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
         );
       },
     );
   }
 
-  Future<void> _confirmDelete(Project project) async {
-    final confirmed = await showDialog<bool>(
+  Future<void> _showDeleteDialog(Project project) async {
+    await showGeneralDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Project'),
-        content: Text('Are you sure you want to delete "${project.title}"?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
-        ],
-      ),
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+  barrierLabel: 'Delete Project Dialog',
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return ScaleTransition(
+          scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          child: Center(
+            child: Container(
+              width: 420,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 16, offset: Offset(0,8))],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Delete Project', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                      IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Are you sure you want to delete "${project.title}"? This action cannot be undone.'),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                        onPressed: () {
+                          _ctrl.deleteProject(project.id);
+                          _descriptions.remove(project.id);
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Project deleted')));
+                        },
+                        child: const Text('Delete'),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
-    if (confirmed == true) {
-      _ctrl.deleteProject(project.id);
-      _descriptions.remove(project.id);
-    }
   }
 
   // Temporary in-memory descriptions store (until Project model updated globally).
   final Map<String, String> _descriptions = {};
+}
+
+class ProjectFormData {
+  String title;
+  DateTime started;
+  String priority;
+  String status;
+  String? executor;
+  String description;
+  ProjectFormData({
+    required this.title,
+    required this.started,
+    required this.priority,
+    required this.status,
+    required this.executor,
+    required this.description,
+  });
+}
+
+class _ProjectFormDialog extends StatefulWidget {
+  final String title;
+  final ProjectFormData? initial;
+  final void Function(ProjectFormData data) onSubmit;
+  final List<String>? executors;
+  final String? Function(String)? titleValidator;
+  final double? width;
+  final bool showStatus;
+  final bool showExecutor;
+  const _ProjectFormDialog({required this.title, this.initial, required this.onSubmit, this.executors, this.titleValidator, this.width, this.showStatus = true, this.showExecutor = true});
+
+  @override
+  State<_ProjectFormDialog> createState() => _ProjectFormDialogState();
+}
+
+class _ProjectFormDialogState extends State<_ProjectFormDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late ProjectFormData data;
+
+  @override
+  void initState() {
+    super.initState();
+    data = widget.initial ?? ProjectFormData(
+      title: '',
+      started: DateTime.now(),
+      priority: 'Medium',
+      status: 'Not Started',
+      executor: '',
+      description: '',
+    );
+  }
+
+  String _dateString(DateTime d) => '${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: widget.width ?? 520,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 16, offset: Offset(0,8))],
+        ),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
+                    IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final wide = constraints.maxWidth > 600;
+                    final List<Widget> fields = [
+                      // Title
+                      TextFormField(
+                        initialValue: data.title,
+                        decoration: const InputDecoration(labelText: 'Project Title *'),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return 'Enter title';
+                          if (widget.titleValidator != null) {
+                            return widget.titleValidator!(v.trim());
+                          }
+                          return null;
+                        },
+                        onSaved: (v) => data.title = v!.trim(),
+                      ),
+                      // Date picker
+                      GestureDetector(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: data.started,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2100),
+                          );
+                          if (picked != null) setState(() => data.started = picked);
+                        },
+                        child: AbsorbPointer(
+                          child: TextFormField(
+                            decoration: const InputDecoration(labelText: 'Started Date *'),
+                            controller: TextEditingController(text: _dateString(data.started)),
+                          ),
+                        ),
+                      ),
+                      // Priority
+                      DropdownButtonFormField<String>(
+                        initialValue: data.priority,
+                        items: ['High','Medium','Low'].map((p)=>DropdownMenuItem(value:p,child:Text(p))).toList(),
+                        onChanged: (v)=> setState(()=> data.priority = v ?? data.priority),
+                        decoration: const InputDecoration(labelText: 'Priority *'),
+                      ),
+                      // Description
+                      TextFormField(
+                        initialValue: data.description,
+                        maxLines: 3,
+                        decoration: const InputDecoration(labelText: 'Description *'),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter description' : null,
+                        onSaved: (v) => data.description = v!.trim(),
+                      ),
+                    ];
+                    if (widget.showStatus) {
+                      fields.insert(3, DropdownButtonFormField<String>(
+                        initialValue: data.status,
+                        items: ['In Progress','Completed','Not Started'].map((p)=>DropdownMenuItem(value:p,child:Text(p))).toList(),
+                        onChanged: (v)=> setState(()=> data.status = v ?? data.status),
+                        decoration: const InputDecoration(labelText: 'Status *'),
+                      ));
+                    }
+                    if (widget.showExecutor) {
+                      fields.insert(widget.showStatus ? 4 : 3, DropdownButtonFormField<String>(
+                        initialValue: (data.executor?.isEmpty ?? true) ? null : data.executor,
+                        items: (widget.executors ?? const ['Emma Carter','Liam Walker','Olivia Harris','Noah Clark','Ava Lewis','William Hall','Sophia Young','James Wright','Isabella King'])
+                            .map((n)=>DropdownMenuItem(value:n,child:Text(n))).toList(),
+                        onChanged: (v)=> setState(()=> data.executor = v ?? ''),
+                        decoration: const InputDecoration(labelText: 'Executor (optional)'),
+                      ));
+                    }
+                    if (!wide) {
+                      return Column(
+                        children: [
+                          for (int i = 0; i < fields.length; i++) ...[
+                            fields[i],
+                            if (i != fields.length - 1) const SizedBox(height: 12),
+                          ]
+                        ],
+                      );
+                    }
+                    // Two-column grid for wide layout
+                    final half = (constraints.maxWidth - 24) / 2;
+                    return Wrap(
+                      spacing: 24,
+                      runSpacing: 16,
+                      children: [
+                        for (final f in fields) SizedBox(width: half, child: f),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () {
+                        if (_formKey.currentState?.validate() ?? false) {
+                          _formKey.currentState?.save();
+                          widget.onSubmit(data);
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      child: Text(widget.initial == null ? 'Create' : 'Save'),
+                    )
+                  ],
+                )
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderCell extends StatelessWidget {
+  final String label;
+  final bool active;
+  final bool ascending;
+  final VoidCallback onTap;
+  const _HeaderCell({required this.label, required this.active, required this.ascending, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = active
+        ? (ascending ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded)
+        : Icons.unfold_more_rounded;
+    final color = active ? Colors.blueGrey[800] : Colors.blueGrey[600];
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.w600, color: color, fontSize: 13),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Icon(icon, size: 16, color: color),
+        ],
+      ),
+    );
+  }
 }
