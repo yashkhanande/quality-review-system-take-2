@@ -437,7 +437,7 @@ class EmployeePage extends StatelessWidget {
                               ),
                               const DataColumn(label: Text('Email')),
                               const DataColumn(label: Text('Role')),
-                              const DataColumn(label: Text('Password')),
+                              // Password column removed per requirement
                               DataColumn(
                                 label: const Text('Date Added'),
                                 onSort: (colIndex, asc) {
@@ -450,7 +450,7 @@ class EmployeePage extends StatelessWidget {
                                   ctrl.members.assignAll(sorted);
                                 },
                               ),
-                              const DataColumn(label: Text('Last Active')),
+                              // Last Active column removed per requirement
                               const DataColumn(label: Text('Actions')),
                             ],
                             rows: list.map((e) {
@@ -473,16 +473,7 @@ class EmployeePage extends StatelessWidget {
                                   ),
                                   DataCell(Text(e.email)),
                                   DataCell(_roleChip(e.role)),
-                                  DataCell(
-                                    Text(
-                                      e.password != null &&
-                                              e.password!.isNotEmpty
-                                          ? '••••••'
-                                          : 'Not Set',
-                                    ),
-                                  ),
                                   DataCell(Text(e.dateAdded)),
-                                  DataCell(Text(e.lastActive)),
                                   DataCell(
                                     Row(
                                       children: [

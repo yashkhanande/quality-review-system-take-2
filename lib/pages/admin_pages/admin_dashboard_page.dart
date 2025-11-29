@@ -21,10 +21,10 @@ class AdminDashboardPage extends StatelessWidget {
       final q = search.toLowerCase();
       list = list.where((p) {
         final exec = p.executor ?? '';
+        // Removed executor from search filter per requirement
         return p.title.toLowerCase().contains(q) ||
             p.status.toLowerCase().contains(q) ||
-            p.priority.toLowerCase().contains(q) ||
-            exec.toLowerCase().contains(q);
+            p.priority.toLowerCase().contains(q);
       }).toList();
     }
     int cmp(Project a, Project b) {
@@ -43,11 +43,7 @@ class AdminDashboardPage extends StatelessWidget {
         case 'status':
           res = a.status.toLowerCase().compareTo(b.status.toLowerCase());
           break;
-        case 'executor':
-          res = (a.executor ?? '').toLowerCase().compareTo(
-            (b.executor ?? '').toLowerCase(),
-          );
-          break;
+        // Executor sort removed
       }
       return ascending ? res : -res;
     }
@@ -180,7 +176,7 @@ class AdminDashboardPage extends StatelessWidget {
                 ),
                 child: TextField(
                   decoration: const InputDecoration(
-                    hintText: 'Search by title, status, priority, executor...',
+                    hintText: 'Search by title, status, priority...',
                     prefixIcon: Icon(Icons.search),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(
@@ -289,15 +285,7 @@ class AdminDashboardPage extends StatelessWidget {
                               onTap: () => ui.toggleSort('status'),
                             ),
                           ),
-                          Expanded(
-                            flex: 2,
-                            child: _HeaderCell(
-                              label: 'Executor',
-                              active: sortKey == 'executor',
-                              ascending: asc,
-                              onTap: () => ui.toggleSort('executor'),
-                            ),
-                          ),
+                          // Executor column removed per requirement
                           // Actions column removed (moved to details page)
                         ],
                       ),
@@ -309,13 +297,7 @@ class AdminDashboardPage extends StatelessWidget {
                       itemCount: projects.length,
                       itemBuilder: (context, index) {
                         final proj = projects[index];
-                        final executor =
-                            (proj.status == 'In Progress' ||
-                                proj.status == 'Completed')
-                            ? ((proj.executor?.trim().isNotEmpty ?? false)
-                                  ? proj.executor!.trim()
-                                  : '--')
-                            : '--';
+                        // Executor value removed per requirement
                         final hovered = ui.hoverIndex.value == index;
                         return MouseRegion(
                           onEnter: (_) => ui.setHover(index),
@@ -379,7 +361,7 @@ class AdminDashboardPage extends StatelessWidget {
                                     flex: 1,
                                     child: Text((proj.status).toString()),
                                   ),
-                                  Expanded(flex: 2, child: Text(executor)),
+                                  // Executor cell removed
                                   // Edit/Delete removed from dashboard; now only in details page.
                                 ],
                               ),
@@ -636,11 +618,13 @@ class _HeaderCell extends StatelessWidget {
   final bool active;
   final bool ascending;
   final VoidCallback onTap;
+  final bool showIcon;
   const _HeaderCell({
     required this.label,
     required this.active,
     required this.ascending,
     required this.onTap,
+    this.showIcon = true,
   });
 
   @override
@@ -668,7 +652,7 @@ class _HeaderCell extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          Icon(icon, size: 16, color: color),
+          if (showIcon) Icon(icon, size: 16, color: color),
         ],
       ),
     );
