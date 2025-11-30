@@ -104,7 +104,7 @@ class ProjectService {
   }
 
   Future<void> delete(String id) async {
-    final uri = Uri.parse('\${ApiConfig.baseUrl}/projects/\$id');
+    final uri = Uri.parse('${ApiConfig.baseUrl}/projects/$id');
     await http.delete(uri);
   }
 

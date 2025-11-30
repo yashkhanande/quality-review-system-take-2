@@ -490,16 +490,28 @@ class _AdminProjectDetailsPageState extends State<AdminProjectDetailsPage> {
                   backgroundColor: Colors.redAccent,
                 ),
                 onPressed: () async {
-                  await _projectsCtrl.removeProjectRemote(
-                    detailsCtrl.project.id,
-                  );
-                  Navigator.of(context).pop();
-                  Get.back();
-                  Get.snackbar(
-                    'Deleted',
-                    'Project has been deleted',
-                    snackPosition: SnackPosition.BOTTOM,
-                  );
+                  try {
+                    Navigator.of(context).pop(); // Close dialog first
+                    await _projectsCtrl.removeProjectRemoteAndRefresh(
+                      detailsCtrl.project.id,
+                    );
+                    Get.back(); // Go back to project list
+                    Get.snackbar(
+                      'Deleted',
+                      'Project has been deleted successfully',
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: Colors.green,
+                      colorText: Colors.white,
+                    );
+                  } catch (e) {
+                    Get.snackbar(
+                      'Error',
+                      'Failed to delete project: ${e.toString()}',
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: Colors.red,
+                      colorText: Colors.white,
+                    );
+                  }
                 },
                 child: const Text('Delete Project'),
               ),
