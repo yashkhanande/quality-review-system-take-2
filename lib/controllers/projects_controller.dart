@@ -5,6 +5,7 @@ import '../models/team_member.dart';
 import '../services/project_service.dart';
 import '../services/project_membership_service.dart';
 import '../services/role_service.dart';
+import '../services/user_service.dart';
 import 'auth_controller.dart';
 import 'team_controller.dart';
 
@@ -214,34 +215,81 @@ class ProjectsController extends GetxController {
         );
       }
 
-      // Resolve any legacy name-based entries to user IDs via TeamController
-      final teamCtrl = Get.isRegistered<TeamController>()
-          ? Get.find<TeamController>()
+      // Fetch fresh user list from backend to ensure valid IDs
+      final userService = Get.isRegistered<UserService>()
+          ? Get.find<UserService>()
           : null;
+      List<TeamMember> backendUsers = [];
+      if (userService != null) {
+        try {
+          backendUsers = await userService.getAll();
+          // ignore: avoid_print
+          print(
+            '[ProjectsController] Fetched ${backendUsers.length} users from backend',
+          );
+        } catch (e) {
+          // ignore: avoid_print
+          print('[ProjectsController] Failed to fetch users: $e');
+        }
+      }
+
+      // Resolve incoming memberIds to valid backend user IDs
       final normalizedDesired = <String>{};
       for (final raw in memberIds) {
         final trimmed = raw.trim();
         if (trimmed.isEmpty) continue;
-        var candidate = trimmed;
-        if (teamCtrl != null) {
-          final idExists = teamCtrl.members.any((m) => m.id == trimmed);
-          if (!idExists) {
-            TeamMember? nameMatch;
-            for (final m in teamCtrl.members) {
-              if (m.name.trim().toLowerCase() == trimmed.toLowerCase()) {
-                nameMatch = m;
-                break;
-              }
-            }
-            if (nameMatch != null) {
-              candidate = nameMatch.id;
-            }
-          }
+
+        // Try direct ID match first
+        var matched = backendUsers.firstWhere(
+          (u) => u.id == trimmed,
+          orElse: () => TeamMember(
+            id: '',
+            name: '',
+            email: '',
+            role: 'User',
+            status: 'Active',
+            dateAdded: '',
+            lastActive: '',
+          ),
+        );
+
+        // If no ID match, try name/email match
+        if (matched.id.isEmpty) {
+          matched = backendUsers.firstWhere(
+            (u) =>
+                u.name.trim().toLowerCase() == trimmed.toLowerCase() ||
+                u.email.trim().toLowerCase() == trimmed.toLowerCase(),
+            orElse: () => TeamMember(
+              id: '',
+              name: '',
+              email: '',
+              role: 'User',
+              status: 'Active',
+              dateAdded: '',
+              lastActive: '',
+            ),
+          );
         }
-        normalizedDesired.add(candidate);
+
+        if (matched.id.isNotEmpty) {
+          normalizedDesired.add(matched.id);
+          // ignore: avoid_print
+          print(
+            '[ProjectsController] Resolved "$trimmed" → userId=${matched.id} (${matched.name})',
+          );
+        } else {
+          // ignore: avoid_print
+          print(
+            '[ProjectsController] WARNING: Could not resolve "$trimmed" to any backend user - SKIPPING',
+          );
+        }
       }
 
       // Fetch existing memberships from backend
+      // ignore: avoid_print
+      print(
+        '[ProjectsController] Fetching existing memberships for project=$projectId',
+      );
       final existingMemberships = await membershipService.getProjectMembers(
         projectId,
       );
@@ -268,11 +316,21 @@ class ProjectsController extends GetxController {
         print(
           '[ProjectsController] Adding userId=$userId roleId=$defaultRoleId',
         );
-        await membershipService.addMember(
-          projectId: projectId,
-          userId: userId,
-          roleId: defaultRoleId,
-        );
+        try {
+          await membershipService.addMember(
+            projectId: projectId,
+            userId: userId,
+            roleId: defaultRoleId,
+          );
+          // ignore: avoid_print
+          print('[ProjectsController] ✓ Successfully added userId=$userId');
+        } catch (addError) {
+          // ignore: avoid_print
+          print(
+            '[ProjectsController] ✗ FAILED to add userId=$userId: $addError',
+          );
+          rethrow;
+        }
       }
 
       // Apply removals
@@ -292,16 +350,33 @@ class ProjectsController extends GetxController {
           assignedEmployees: desiredIds.toList(),
         );
         projects[idx] = _normalize(updated);
+        // ignore: avoid_print
+        print(
+          '[ProjectsController] ✓✓✓ setProjectAssignments SUCCESS: Updated project "${projects[idx].title}" with assignedEmployees=${desiredIds.toList()}',
+        );
       }
     } catch (e) {
+      // ignore: avoid_print
+      print('[ProjectsController] ✗✗✗ setProjectAssignments FAILED: $e');
       errorMessage.value = e.toString();
       rethrow;
     }
   }
 
   Future<void> _hydrateAssignments() async {
-    if (!Get.isRegistered<ProjectMembershipService>()) return;
+    if (!Get.isRegistered<ProjectMembershipService>()) {
+      // ignore: avoid_print
+      print(
+        '[ProjectsController] _hydrateAssignments: ProjectMembershipService not registered',
+      );
+      return;
+    }
     final membershipService = Get.find<ProjectMembershipService>();
+    // ignore: avoid_print
+    print(
+      '[ProjectsController] _hydrateAssignments: Starting for ${projects.length} projects',
+    );
+
     for (final project in projects) {
       try {
         final memberships = await membershipService.getProjectMembers(
@@ -311,15 +386,31 @@ class ProjectsController extends GetxController {
             .map((m) => m.userId)
             .where((id) => id.trim().isNotEmpty)
             .toList();
+
+        // ignore: avoid_print
+        print(
+          '[ProjectsController] Project "${project.title}" (${project.id}): Found ${memberships.length} memberships → userIds=$ids',
+        );
+
         final idx = projects.indexWhere((p) => p.id == project.id);
         if (idx != -1) {
           projects[idx] = _normalize(
             projects[idx].copyWith(assignedEmployees: ids),
           );
+          // ignore: avoid_print
+          print(
+            '[ProjectsController] ✓ Updated project "${project.title}" assignedEmployees=$ids',
+          );
         }
-      } catch (_) {
-        // Silently ignore per-project membership fetch errors
+      } catch (e) {
+        // ignore: avoid_print
+        print(
+          '[ProjectsController] ✗ Failed to hydrate assignments for project "${project.title}": $e',
+        );
       }
     }
+
+    // ignore: avoid_print
+    print('[ProjectsController] _hydrateAssignments: Complete');
   }
 }

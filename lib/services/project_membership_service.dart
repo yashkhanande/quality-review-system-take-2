@@ -15,14 +15,51 @@ class ProjectMembershipService {
   /// Get all members for a specific project
   /// Backend expects: { "project_id": "..." } in request body
   Future<List<ProjectMembership>> getProjectMembers(String projectId) async {
-    final uri = Uri.parse('${ApiConfig.baseUrl}/projects/members');
-    final json = await http.postJson(uri, {'project_id': projectId});
+    try {
+      final uri = Uri.parse(
+        '${ApiConfig.baseUrl}/projects/members?project_id=$projectId',
+      );
+      // ignore: avoid_print
+      print(
+        '[ProjectMembershipService] getProjectMembers -> GET ' + uri.toString(),
+      );
+      final json = await http.getJson(uri);
+      // ignore: avoid_print
+      print(
+        '[ProjectMembershipService] getProjectMembers <- response keys=' +
+            json.keys.join(', '),
+      );
+      if (json['error'] != null) {
+        // ignore: avoid_print
+        print(
+          '[ProjectMembershipService] getProjectMembers ERROR: ' +
+              json['error'].toString(),
+        );
+      }
 
-    if (json['data'] is Map && json['data']['members'] is List) {
-      final members = (json['data']['members'] as List).cast<dynamic>();
-      return members.map((e) => _fromApi(e as Map<String, dynamic>)).toList();
+      if (json['data'] is Map && json['data']['members'] is List) {
+        final members = (json['data']['members'] as List).cast<dynamic>();
+        // ignore: avoid_print
+        print(
+          '[ProjectMembershipService] getProjectMembers parsed members count=' +
+              members.length.toString(),
+        );
+        return members.map((e) => _fromApi(e as Map<String, dynamic>)).toList();
+      }
+      // ignore: avoid_print
+      print(
+        '[ProjectMembershipService] getProjectMembers parsed members count=0 (no data.members list)',
+      );
+      return [];
+    } catch (e) {
+      // ignore: avoid_print
+      print(
+        '[ProjectMembershipService] getProjectMembers failed for project=$projectId: $e',
+      );
+      // If fetching existing members fails (e.g., orphaned user references),
+      // return empty list so we can still add new valid members
+      return [];
     }
-    return [];
   }
 
   /// Add a member to a project

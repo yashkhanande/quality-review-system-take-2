@@ -21,13 +21,30 @@ class _MyprojectState extends State<Myproject> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
 
+  // Cache to prevent reactive loops
+  List<Project> _cachedMyProjects = [];
+  String? _lastUserId;
+
   // Removed legacy fallback user; rely solely on AuthController.
 
   @override
   void initState() {
     super.initState();
-    _ctrl = Get.put(ProjectsController());
-    // No mock preload; data comes from backend stream via ProjectsController.
+    _ctrl = Get.isRegistered<ProjectsController>()
+        ? Get.find<ProjectsController>()
+        : Get.put(ProjectsController());
+    // Ensure search starts empty
+    _searchQuery = '';
+    _searchCtrl.text = '';
+
+    // Refresh projects with assignments when page loads
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _ctrl.refreshProjects();
+      // Rebuild once after hydration
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override
@@ -46,15 +63,25 @@ class _MyprojectState extends State<Myproject> {
   }
 
   // Active / assigned projects for authenticated user only
-  List<Project> get _myProjects {
+  List<Project> _myProjects() {
     final auth = Get.isRegistered<AuthController>()
         ? Get.find<AuthController>()
         : null;
     final userId = auth?.currentUser.value?.id;
     final userName = auth?.currentUser.value?.name;
+    final userEmail = auth?.currentUser.value?.email;
+
+    // ignore: avoid_print
+    print('[MyProjects] Filtering for userId=$userId userName=$userName');
+
     if (userId == null && userName == null) return const [];
-    return _ctrl.projects.where((p) {
+
+    final matched = _ctrl.projects.where((p) {
       final assigned = p.assignedEmployees ?? const [];
+
+      // ignore: avoid_print
+      print('[MyProjects] Project "${p.title}" assignedEmployees=$assigned');
+
       final matchId =
           userId != null && assigned.any((e) => e.trim() == userId.trim());
       final matchName =
@@ -63,12 +90,70 @@ class _MyprojectState extends State<Myproject> {
               assigned.any(
                 (e) => e.trim().toLowerCase() == userName.trim().toLowerCase(),
               ));
-      return matchId || matchName;
+      final matchEmail =
+          userEmail != null &&
+          assigned.any(
+            (e) => e.trim().toLowerCase() == userEmail.trim().toLowerCase(),
+          );
+
+      final matches = matchId || matchName || matchEmail;
+
+      // ignore: avoid_print
+      if (matches) print('[MyProjects] ✓ Matched project "${p.title}"');
+
+      return matches;
     }).toList();
+
+    // ignore: avoid_print
+    print('[MyProjects] Total matched projects: ${matched.length}');
+
+    return matched;
   }
 
-  List<Project> get _visibleProjects {
-    List<Project> list = _myProjects.toList();
+  Widget _debugBanner() {
+    final auth = Get.isRegistered<AuthController>()
+        ? Get.find<AuthController>()
+        : null;
+    final userId = auth?.currentUser.value?.id ?? 'null';
+    final userName = auth?.currentUser.value?.name ?? 'null';
+    final userEmail = auth?.currentUser.value?.email ?? 'null';
+    final total = _ctrl.projects.length;
+    final matched = _myProjects().length;
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blueGrey.shade100),
+      ),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 8,
+        children: [
+          Text(
+            'UserId: ' + userId,
+            style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+          ),
+          Text(
+            'Name: ' + userName,
+            style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+          ),
+          Text(
+            'Email: ' + userEmail,
+            style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+          ),
+          Text(
+            'Projects: ' + matched.toString() + ' / ' + total.toString(),
+            style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Project> _visibleProjects() {
+    List<Project> list = _myProjects();
     if (_searchQuery.trim().isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       list = list.where((p) {
@@ -139,10 +224,22 @@ class _MyprojectState extends State<Myproject> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'My Projects',
-                style: Theme.of(context).textTheme.headlineMedium,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'My Projects',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh projects',
+                    onPressed: () => _ctrl.refreshProjects(),
+                  ),
+                ],
               ),
+              // Lightweight debug banner to surface matching context
+              _debugBanner(),
               const SizedBox(height: 12),
               // Search bar (same style as dashboard)
               Container(
@@ -186,172 +283,226 @@ class _MyprojectState extends State<Myproject> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(8.0),
-                  child: Obx(() {
-                    final projects = _visibleProjects;
-                    if (projects.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.all(32.0),
-                        child: Center(
-                          child: Text(
-                            'No projects assigned to you',
-                            style: Theme.of(context).textTheme.bodyLarge
-                                ?.copyWith(color: Colors.grey[500]),
+                  child: Builder(
+                    builder: (context) {
+                      final projects = _visibleProjects();
+                      final auth = Get.isRegistered<AuthController>()
+                          ? Get.find<AuthController>()
+                          : null;
+                      final userId = auth?.currentUser.value?.id?.trim();
+                      if (projects.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.all(32.0),
+                          child: Center(
+                            child: Text(
+                              'No projects assigned to you',
+                              style: Theme.of(context).textTheme.bodyLarge
+                                  ?.copyWith(color: Colors.grey[500]),
+                            ),
                           ),
-                        ),
-                      );
-                    }
-                    return Column(
-                      children: [
-                        // Header row (sortable)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 12,
-                            horizontal: 16,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(6),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 4,
-                                offset: Offset(0, 2),
+                        );
+                      }
+                      return Column(
+                        children: [
+                          // Debug: show per-project assignment contents and match status
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF7F9FC),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: Colors.blueGrey.shade100,
                               ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                flex: 3,
-                                child: _HeaderCell(
-                                  label: 'Project Title',
-                                  active: _sortKey == 'title',
-                                  ascending: _ascending,
-                                  onTap: () => _toggleSort('title'),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Assignments Debug',
+                                  style: Theme.of(context).textTheme.labelLarge
+                                      ?.copyWith(color: Colors.blueGrey[700]),
                                 ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: _HeaderCell(
-                                  label: 'Started',
-                                  active: _sortKey == 'started',
-                                  ascending: _ascending,
-                                  onTap: () => _toggleSort('started'),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 1,
-                                child: _HeaderCell(
-                                  label: 'Priority',
-                                  active: _sortKey == 'priority',
-                                  ascending: _ascending,
-                                  onTap: () => _toggleSort('priority'),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 1,
-                                child: _HeaderCell(
-                                  label: 'Status',
-                                  active: _sortKey == 'status',
-                                  ascending: _ascending,
-                                  onTap: () => _toggleSort('status'),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 2,
-                                child: _HeaderCell(
-                                  label: 'Executor',
-                                  active: _sortKey == 'executor',
-                                  ascending: _ascending,
-                                  onTap: () => _toggleSort('executor'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: projects.length,
-                          itemBuilder: (context, index) {
-                            final proj = projects[index];
-                            final hovered = _hoverIndex == index;
-                            return MouseRegion(
-                              onEnter: (_) =>
-                                  setState(() => _hoverIndex = index),
-                              onExit: (_) => setState(() => _hoverIndex = null),
-                              child: GestureDetector(
-                                onTap: () => _openProjectDetails(proj),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 150),
-                                  curve: Curves.easeOut,
-                                  margin: const EdgeInsets.only(bottom: 6),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 10,
-                                    horizontal: 16,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: hovered
-                                        ? const Color(0xFFF7F9FC)
-                                        : Colors.white,
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: hovered
-                                          ? Colors.blue.shade200
-                                          : Colors.black12,
+                                const SizedBox(height: 6),
+                                ...projects.map((p) {
+                                  final assigned =
+                                      p.assignedEmployees ?? const [];
+                                  final matches =
+                                      userId != null &&
+                                      assigned.any((e) => e.trim() == userId);
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 2,
                                     ),
-                                    boxShadow: hovered
-                                        ? const [
-                                            BoxShadow(
-                                              color: Colors.black12,
-                                              blurRadius: 6,
-                                              offset: Offset(0, 2),
-                                            ),
-                                          ]
-                                        : null,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        flex: 3,
-                                        child: Text(
-                                          proj.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          // Keep title default color (remove blue styling)
-                                        ),
+                                    child: Text(
+                                      '[${matches ? '✓' : '×'}] ${p.title}: ' +
+                                          assigned.join(', '),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: matches
+                                            ? Colors.green[700]
+                                            : Colors.red[700],
                                       ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          '${proj.started.year}-${proj.started.month.toString().padLeft(2, '0')}-${proj.started.day.toString().padLeft(2, '0')}',
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 1,
-                                        child: _priorityChip(proj.priority),
-                                      ),
-                                      Expanded(
-                                        flex: 1,
-                                        child: Text(proj.status),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(proj.executor ?? '--'),
-                                      ),
-                                    ],
+                                    ),
+                                  );
+                                }).toList(),
+                              ],
+                            ),
+                          ),
+                          // Header row (sortable)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: _HeaderCell(
+                                    label: 'Project Title',
+                                    active: _sortKey == 'title',
+                                    ascending: _ascending,
+                                    onTap: () => _toggleSort('title'),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    );
-                  }),
+                                Expanded(
+                                  flex: 2,
+                                  child: _HeaderCell(
+                                    label: 'Started',
+                                    active: _sortKey == 'started',
+                                    ascending: _ascending,
+                                    onTap: () => _toggleSort('started'),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 1,
+                                  child: _HeaderCell(
+                                    label: 'Priority',
+                                    active: _sortKey == 'priority',
+                                    ascending: _ascending,
+                                    onTap: () => _toggleSort('priority'),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 1,
+                                  child: _HeaderCell(
+                                    label: 'Status',
+                                    active: _sortKey == 'status',
+                                    ascending: _ascending,
+                                    onTap: () => _toggleSort('status'),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: _HeaderCell(
+                                    label: 'Executor',
+                                    active: _sortKey == 'executor',
+                                    ascending: _ascending,
+                                    onTap: () => _toggleSort('executor'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: projects.length,
+                            itemBuilder: (context, index) {
+                              final proj = projects[index];
+                              final hovered = _hoverIndex == index;
+                              return MouseRegion(
+                                onEnter: (_) =>
+                                    setState(() => _hoverIndex = index),
+                                onExit: (_) =>
+                                    setState(() => _hoverIndex = null),
+                                child: GestureDetector(
+                                  onTap: () => _openProjectDetails(proj),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    curve: Curves.easeOut,
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 10,
+                                      horizontal: 16,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: hovered
+                                          ? const Color(0xFFF7F9FC)
+                                          : Colors.white,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: hovered
+                                            ? Colors.blue.shade200
+                                            : Colors.black12,
+                                      ),
+                                      boxShadow: hovered
+                                          ? const [
+                                              BoxShadow(
+                                                color: Colors.black12,
+                                                blurRadius: 6,
+                                                offset: Offset(0, 2),
+                                              ),
+                                            ]
+                                          : null,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          flex: 3,
+                                          child: Text(
+                                            proj.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            // Keep title default color (remove blue styling)
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 2,
+                                          child: Text(
+                                            '${proj.started.year}-${proj.started.month.toString().padLeft(2, '0')}-${proj.started.day.toString().padLeft(2, '0')}',
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 1,
+                                          child: _priorityChip(proj.priority),
+                                        ),
+                                        Expanded(
+                                          flex: 1,
+                                          child: Text(proj.status),
+                                        ),
+                                        Expanded(
+                                          flex: 2,
+                                          child: Text(proj.executor ?? '--'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
+            ),
             ],
           ),
         ),
