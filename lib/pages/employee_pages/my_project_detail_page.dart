@@ -307,12 +307,15 @@ class _MyProjectDetailPageState extends State<MyProjectDetailPage> {
               .map((m) => m.userName ?? '')
               .where((n) => n.trim().isNotEmpty)
               .toList();
-          Get.to(() => QuestionsScreen(
-                projectTitle: _project.title,
-                leaders: leaders,
-                reviewers: reviewers,
-                executors: executors,
-              ));
+          Get.to(
+            () => QuestionsScreen(
+              projectId: _project.id,
+              projectTitle: _project.title,
+              leaders: leaders,
+              reviewers: reviewers,
+              executors: executors,
+            ),
+          );
         },
         icon: const Icon(Icons.checklist),
         label: const Text('Open Phase 1 Checklist'),

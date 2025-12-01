@@ -8,6 +8,7 @@ import '../services/user_service.dart';
 import '../services/role_service.dart';
 import '../services/project_membership_service.dart';
 import '../controllers/auth_controller.dart';
+import '../pages/employee_pages/checklist_controller.dart';
 
 class AppBindings extends Bindings {
   @override
@@ -24,6 +25,10 @@ class AppBindings extends Bindings {
       ProjectMembershipService(Get.find<SimpleHttp>()),
       permanent: true,
     );
+
+    // ChecklistController (permanent service)
+    Get.put<ChecklistController>(ChecklistController(), permanent: true);
+
     final auth = Get.put<AuthController>(AuthController(), permanent: true);
     // Kick off auth restore (fire and forget)
     auth.init();

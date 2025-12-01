@@ -1,39 +1,197 @@
 import 'package:get/get.dart';
+import '../../services/checklist_answer_service.dart';
+import '../../services/http_client.dart';
 
 class ChecklistController extends GetxService {
-  // projectId/title -> role -> subQuestion -> answer map
-  final _store = <String, Map<String, Map<String, dynamic>>>{}.obs;
-  // projectId/title -> role -> submitted metadata
-  final _submitted = <String, Map<String, Map<String, dynamic>>>{}.obs;
+  late final ChecklistAnswerService _service;
 
-  Map<String, dynamic>? getAnswers(String projectKey, String role, String subQ) {
-    return _store[projectKey]?[role]?[subQ] as Map<String, dynamic>?;
+  // Cache for loaded answers: projectId -> phase -> role -> subQuestion -> answer map
+  final _cache = <String, Map<int, Map<String, Map<String, dynamic>>>>{}.obs;
+
+  // Submission status cache: projectId -> phase -> role -> metadata
+  final _submissionCache = <String, Map<int, Map<String, dynamic>>>{}.obs;
+
+  // Loading state
+  final _isLoading = <String, bool>{}.obs;
+
+  // Pending saves (debouncing)
+  final Map<String, Future<void>> _pendingSaves = {};
+
+  @override
+  void onInit() {
+    super.onInit();
+    print('🎯 ChecklistController.onInit() called');
+    // Initialize service
+    try {
+      final http = Get.find<SimpleHttp>();
+      _service = ChecklistAnswerService(http);
+      print('✓ ChecklistController initialized successfully');
+    } catch (e) {
+      print('❌ Error initializing ChecklistController: $e');
+      rethrow;
+    }
   }
 
-  Map<String, Map<String, dynamic>> getRoleSheet(String projectKey, String role) {
-    return Map<String, Map<String, dynamic>>.from(_store[projectKey]?[role] ?? {});
+  /// Load answers from backend for a specific project/phase/role
+  Future<void> loadAnswers(String projectId, int phase, String role) async {
+    print(
+      '🔵 loadAnswers CALLED: projectId=$projectId, phase=$phase, role=$role',
+    );
+    final key = '$projectId-$phase-$role';
+    if (_isLoading[key] == true) {
+      print('⚠️ Already loading $key, skipping...');
+      return; // Already loading
+    }
+
+    _isLoading[key] = true;
+    print('📥 Loading answers for $role in project $projectId phase $phase...');
+
+    try {
+      final answers = await _service.getAnswers(projectId, phase, role);
+      print('✓ Received ${answers.length} answers from backend for $role');
+
+      // Store in cache
+      final proj = _cache.putIfAbsent(projectId, () => {});
+      final phaseMap = proj.putIfAbsent(phase, () => {});
+      phaseMap[role] = answers;
+      _cache.refresh();
+
+      // Also load submission status
+      await _loadSubmissionStatus(projectId, phase, role);
+    } catch (e) {
+      print('❌ Error loading checklist answers: $e');
+    } finally {
+      _isLoading[key] = false;
+    }
   }
 
-  void setAnswer(String projectKey, String role, String subQ, Map<String, dynamic> ans) {
-    final proj = _store.putIfAbsent(projectKey, () => {});
-    final roleMap = proj.putIfAbsent(role, () => {});
+  /// Get a specific answer from cache
+  Map<String, dynamic>? getAnswers(
+    String projectId,
+    int phase,
+    String role,
+    String subQ,
+  ) {
+    return _cache[projectId]?[phase]?[role]?[subQ];
+  }
+
+  /// Get all answers for a role (entire role sheet)
+  Map<String, Map<String, dynamic>> getRoleSheet(
+    String projectId,
+    int phase,
+    String role,
+  ) {
+    return Map<String, Map<String, dynamic>>.from(
+      _cache[projectId]?[phase]?[role] ?? {},
+    );
+  }
+
+  /// Set/update a single answer and save to backend
+  Future<void> setAnswer(
+    String projectId,
+    int phase,
+    String role,
+    String subQ,
+    Map<String, dynamic> ans,
+  ) async {
+    // Update cache immediately for responsive UI
+    final proj = _cache.putIfAbsent(projectId, () => {});
+    final phaseMap = proj.putIfAbsent(phase, () => {});
+    final roleMap = phaseMap.putIfAbsent(role, () => {});
     roleMap[subQ] = ans;
-    _store.refresh();
+    _cache.refresh();
+
+    // Debounce save to backend (wait for user to finish typing)
+    final saveKey = '$projectId-$phase-$role';
+    _pendingSaves[saveKey]?.ignore(); // Cancel pending save if exists
+
+    _pendingSaves[saveKey] = Future.delayed(
+      const Duration(milliseconds: 500),
+      () => _saveToBackend(projectId, phase, role),
+    );
   }
 
-  void submitChecklist(String projectKey, String role) {
-    final projAnswers = _store[projectKey]?[role] ?? {};
-    final meta = {
-      'submitted': true,
-      'submittedAt': DateTime.now().toIso8601String(),
-      'count': projAnswers.length,
-    };
-    final proj = _submitted.putIfAbsent(projectKey, () => {});
-    proj[role] = meta;
-    _submitted.refresh();
+  /// Save all answers for a role to backend
+  Future<bool> _saveToBackend(String projectId, int phase, String role) async {
+    try {
+      final answers = getRoleSheet(projectId, phase, role);
+      print('💾 Saving ${answers.length} answers for $role to backend...');
+      final success = await _service.saveAnswers(
+        projectId,
+        phase,
+        role,
+        answers,
+      );
+      if (success) {
+        print('✓ Saved checklist answers for $role');
+      } else {
+        print('❌ Failed to save checklist answers for $role');
+      }
+      return success;
+    } catch (e) {
+      print('❌ Error saving checklist answers: $e');
+      return false;
+    }
   }
 
-  Map<String, dynamic>? submissionInfo(String projectKey, String role) {
-    return _submitted[projectKey]?[role];
+  /// Submit checklist (mark as submitted on backend)
+  Future<bool> submitChecklist(String projectId, int phase, String role) async {
+    try {
+      // First ensure all answers are saved
+      await _saveToBackend(projectId, phase, role);
+
+      // Then submit
+      final success = await _service.submitChecklist(projectId, phase, role);
+
+      if (success) {
+        // Update submission cache
+        final proj = _submissionCache.putIfAbsent(projectId, () => {});
+        final phaseMap = proj.putIfAbsent(phase, () => {});
+        phaseMap[role] = {
+          'is_submitted': true,
+          'submitted_at': DateTime.now(),
+          'answer_count': getRoleSheet(projectId, phase, role).length,
+        };
+        _submissionCache.refresh();
+        print('✓ Submitted checklist for $role');
+      }
+
+      return success;
+    } catch (e) {
+      print('Error submitting checklist: $e');
+      return false;
+    }
+  }
+
+  /// Get submission info from cache
+  Map<String, dynamic>? submissionInfo(
+    String projectId,
+    int phase,
+    String role,
+  ) {
+    return _submissionCache[projectId]?[phase]?[role];
+  }
+
+  /// Load submission status from backend
+  Future<void> _loadSubmissionStatus(
+    String projectId,
+    int phase,
+    String role,
+  ) async {
+    try {
+      final status = await _service.getSubmissionStatus(projectId, phase, role);
+
+      final proj = _submissionCache.putIfAbsent(projectId, () => {});
+      final phaseMap = proj.putIfAbsent(phase, () => {});
+      phaseMap[role] = status;
+      _submissionCache.refresh();
+    } catch (e) {
+      print('Error loading submission status: $e');
+    }
+  }
+
+  /// Check if currently loading
+  bool isLoading(String projectId, int phase, String role) {
+    return _isLoading['$projectId-$phase-$role'] ?? false;
   }
 }

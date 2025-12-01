@@ -27,6 +27,7 @@ class Question {
 }
 
 class QuestionsScreen extends StatefulWidget {
+  final String projectId;
   final String projectTitle;
   final List<String> leaders;
   final List<String> reviewers;
@@ -34,6 +35,7 @@ class QuestionsScreen extends StatefulWidget {
 
   const QuestionsScreen({
     super.key,
+    required this.projectId,
     required this.projectTitle,
     required this.leaders,
     required this.reviewers,
@@ -50,6 +52,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   final Set<int> executorExpanded = {};
   final Set<int> reviewerExpanded = {};
   late final ChecklistController checklistCtrl;
+  bool _isLoadingData = true;
 
   final List<Question> checklist = [
     Question(
@@ -198,9 +201,54 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   @override
   void initState() {
     super.initState();
+    print('🔷 QuestionsScreen.initState() for project: ${widget.projectId}');
     checklistCtrl = Get.isRegistered<ChecklistController>()
         ? Get.find<ChecklistController>()
         : Get.put(ChecklistController());
+
+    print('✓ ChecklistController obtained: ${checklistCtrl.runtimeType}');
+
+    // Load existing answers from backend for both executor and reviewer
+    _loadChecklistData();
+  }
+
+  Future<void> _loadChecklistData() async {
+    setState(() {
+      _isLoadingData = true;
+    });
+
+    const phase = 1; // Phase 1
+    print('🔄 Loading checklist data for project: ${widget.projectId}');
+
+    await Future.wait([
+      checklistCtrl.loadAnswers(widget.projectId, phase, 'executor'),
+      checklistCtrl.loadAnswers(widget.projectId, phase, 'reviewer'),
+    ]);
+
+    // Populate UI with loaded answers
+    final executorSheet = checklistCtrl.getRoleSheet(
+      widget.projectId,
+      phase,
+      'executor',
+    );
+    final reviewerSheet = checklistCtrl.getRoleSheet(
+      widget.projectId,
+      phase,
+      'reviewer',
+    );
+
+    print('✓ Loaded ${executorSheet.length} executor answers');
+    print('✓ Loaded ${reviewerSheet.length} reviewer answers');
+
+    setState(() {
+      executorAnswers.clear();
+      executorAnswers.addAll(executorSheet);
+
+      reviewerAnswers.clear();
+      reviewerAnswers.addAll(reviewerSheet);
+
+      _isLoadingData = false;
+    });
   }
 
   @override
@@ -211,14 +259,16 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       final auth = Get.find<AuthController>();
       currentUserName = auth.currentUser.value?.name;
     }
-    final canEditExecutor = currentUserName != null &&
-        widget.executors.map((e) => e.trim().toLowerCase()).contains(
-              currentUserName.trim().toLowerCase(),
-            );
-    final canEditReviewer = currentUserName != null &&
-        widget.reviewers.map((e) => e.trim().toLowerCase()).contains(
-              currentUserName.trim().toLowerCase(),
-            );
+    final canEditExecutor =
+        currentUserName != null &&
+        widget.executors
+            .map((e) => e.trim().toLowerCase())
+            .contains(currentUserName.trim().toLowerCase());
+    final canEditReviewer =
+        currentUserName != null &&
+        widget.reviewers
+            .map((e) => e.trim().toLowerCase())
+            .contains(currentUserName.trim().toLowerCase());
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -227,269 +277,342 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         ),
         backgroundColor: Colors.blue,
       ),
-      body: SafeArea(
-        child: Row(
-          children: [
-            // Executor Column
-            Expanded(
+      body: _isLoadingData
+          ? const Center(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: double.infinity,
-                    color: Colors.blue.shade100,
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text(
-                          "Executor Section",
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 18),
-                        ),
-                        const SizedBox(width: 12),
-                        if (!canEditExecutor)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black12,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'View only',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  _SubmitBar(
-                    role: 'executor',
-                    projectKey: widget.projectTitle,
-                    onSubmit: () {
-                      if (!canEditExecutor) return;
-                      checklistCtrl.submitChecklist(widget.projectTitle, 'executor');
-                      setState(() {});
-                    },
-                    submissionInfo: checklistCtrl.submissionInfo(
-                      widget.projectTitle,
-                      'executor',
-                    ),
-                    canEdit: canEditExecutor,
-                  ),
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading checklist data...'),
+                ],
+              ),
+            )
+          : SafeArea(
+              child: Row(
+                children: [
+                  // Executor Column
                   Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(8),
-                      itemCount: checklist.length,
-                      itemBuilder: (context, index) {
-                        final question = checklist[index];
-                        final isExpanded = executorExpanded.contains(index);
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            side: const BorderSide(color: Colors.blue),
-                          ),
-                          margin: const EdgeInsets.symmetric(vertical: 6),
-                          child: Column(
+                    child: Column(
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          color: Colors.blue.shade100,
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              ListTile(
-                                title: Text(
-                                  question.mainQuestion,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
+                              const Text(
+                                "Executor Section",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
                                 ),
-                                trailing: Icon(isExpanded
-                                    ? Icons.keyboard_arrow_up
-                                    : Icons.keyboard_arrow_down),
-                                onTap: () {
-                                  setState(() {
-                                    if (isExpanded) {
-                                      executorExpanded.remove(index);
-                                    } else {
-                                      executorExpanded.add(index);
-                                    }
-                                  });
-                                },
                               ),
-                              if (isExpanded)
-                                Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                    children:
-                                    question.subQuestions.map((subQ) {
-                                      return Padding(
-                                        padding:
-                                        const EdgeInsets.only(bottom: 10),
-                                        child: SubQuestionCard(
-                                          key: ValueKey("executor_$subQ"),
-                                          subQuestion: subQ,
-                                          editable: canEditExecutor,
-                                          initialData: executorAnswers[subQ] ??
-                                              checklistCtrl.getAnswers(
-                                                widget.projectTitle,
-                                                'executor',
-                                                subQ,
-                                              ),
-                                          onAnswer: (ans) {
-                                            if (!canEditExecutor) return;
-                                            setState(() {
-                                              executorAnswers[subQ] = ans;
-                                            });
-                                            checklistCtrl.setAnswer(
-                                              widget.projectTitle,
-                                              'executor',
-                                              subQ,
-                                              ans,
-                                            );
-                                          },
-                                        ),
-                                      );
-                                    }).toList(),
+                              const SizedBox(width: 12),
+                              if (!canEditExecutor)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black12,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                    'View only',
+                                    style: TextStyle(fontSize: 12),
                                   ),
                                 ),
                             ],
                           ),
-                        );
-                      },
+                        ),
+                        _SubmitBar(
+                          role: 'executor',
+                          projectId: widget.projectId,
+                          phase: 1,
+                          onSubmit: () async {
+                            if (!canEditExecutor) return;
+                            final success = await checklistCtrl.submitChecklist(
+                              widget.projectId,
+                              1, // Phase 1
+                              'executor',
+                            );
+                            if (success) {
+                              setState(() {});
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Executor checklist submitted successfully',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          submissionInfo: checklistCtrl.submissionInfo(
+                            widget.projectId,
+                            1, // Phase 1
+                            'executor',
+                          ),
+                          canEdit: canEditExecutor,
+                        ),
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(8),
+                            itemCount: checklist.length,
+                            itemBuilder: (context, index) {
+                              final question = checklist[index];
+                              final isExpanded = executorExpanded.contains(
+                                index,
+                              );
+                              return Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: const BorderSide(color: Colors.blue),
+                                ),
+                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                child: Column(
+                                  children: [
+                                    ListTile(
+                                      title: Text(
+                                        question.mainQuestion,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      trailing: Icon(
+                                        isExpanded
+                                            ? Icons.keyboard_arrow_up
+                                            : Icons.keyboard_arrow_down,
+                                      ),
+                                      onTap: () {
+                                        setState(() {
+                                          if (isExpanded) {
+                                            executorExpanded.remove(index);
+                                          } else {
+                                            executorExpanded.add(index);
+                                          }
+                                        });
+                                      },
+                                    ),
+                                    if (isExpanded)
+                                      Padding(
+                                        padding: const EdgeInsets.all(12.0),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: question.subQuestions.map((
+                                            subQ,
+                                          ) {
+                                            return Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 10,
+                                              ),
+                                              child: SubQuestionCard(
+                                                key: ValueKey("executor_$subQ"),
+                                                subQuestion: subQ,
+                                                editable: canEditExecutor,
+                                                initialData:
+                                                    executorAnswers[subQ] ??
+                                                    checklistCtrl.getAnswers(
+                                                      widget.projectId,
+                                                      1, // Phase 1
+                                                      'executor',
+                                                      subQ,
+                                                    ),
+                                                onAnswer: (ans) {
+                                                  if (!canEditExecutor) return;
+                                                  setState(() {
+                                                    executorAnswers[subQ] = ans;
+                                                  });
+                                                  checklistCtrl.setAnswer(
+                                                    widget.projectId,
+                                                    1, // Phase 1
+                                                    'executor',
+                                                    subQ,
+                                                    ans,
+                                                  );
+                                                },
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
 
-            // Reviewer Column
-            Expanded(
-              child: Column(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    color: Colors.green.shade100,
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text(
-                          "Reviewer Section",
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 18),
-                        ),
-                        const SizedBox(width: 12),
-                        if (!canEditReviewer)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.black12,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'View only',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  _SubmitBar(
-                    role: 'reviewer',
-                    projectKey: widget.projectTitle,
-                    onSubmit: () {
-                      if (!canEditReviewer) return;
-                      checklistCtrl.submitChecklist(widget.projectTitle, 'reviewer');
-                      setState(() {});
-                    },
-                    submissionInfo: checklistCtrl.submissionInfo(
-                      widget.projectTitle,
-                      'reviewer',
-                    ),
-                    canEdit: canEditReviewer,
-                  ),
+                  // Reviewer Column
                   Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(8),
-                      itemCount: checklist.length,
-                      itemBuilder: (context, index) {
-                        final question = checklist[index];
-                        final isExpanded = reviewerExpanded.contains(index);
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            side: const BorderSide(color: Colors.green),
-                          ),
-                          margin: const EdgeInsets.symmetric(vertical: 6),
-                          child: Column(
+                    child: Column(
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          color: Colors.green.shade100,
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              ListTile(
-                                title: Text(
-                                  question.mainQuestion,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold),
+                              const Text(
+                                "Reviewer Section",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
                                 ),
-                                trailing: Icon(isExpanded
-                                    ? Icons.keyboard_arrow_up
-                                    : Icons.keyboard_arrow_down),
-                                onTap: () {
-                                  setState(() {
-                                    if (isExpanded) {
-                                      reviewerExpanded.remove(index);
-                                    } else {
-                                      reviewerExpanded.add(index);
-                                    }
-                                  });
-                                },
                               ),
-                              if (isExpanded)
-                                Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                    children:
-                                    question.subQuestions.map((subQ) {
-                                      return Padding(
-                                        padding:
-                                        const EdgeInsets.only(bottom: 10),
-                                        child: SubQuestionCard(
-                                          key: ValueKey("reviewer_$subQ"),
-                                          subQuestion: subQ,
-                                          editable: canEditReviewer,
-                                          initialData: reviewerAnswers[subQ] ??
-                                              checklistCtrl.getAnswers(
-                                                widget.projectTitle,
-                                                'reviewer',
-                                                subQ,
-                                              ),
-                                          onAnswer: (ans) {
-                                            if (!canEditReviewer) return;
-                                            setState(() {
-                                              reviewerAnswers[subQ] = ans;
-                                            });
-                                            checklistCtrl.setAnswer(
-                                              widget.projectTitle,
-                                              'reviewer',
-                                              subQ,
-                                              ans,
-                                            );
-                                          },
-                                        ),
-                                      );
-                                    }).toList(),
+                              const SizedBox(width: 12),
+                              if (!canEditReviewer)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black12,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text(
+                                    'View only',
+                                    style: TextStyle(fontSize: 12),
                                   ),
                                 ),
                             ],
                           ),
-                        );
-                      },
+                        ),
+                        _SubmitBar(
+                          role: 'reviewer',
+                          projectId: widget.projectId,
+                          phase: 1,
+                          onSubmit: () async {
+                            if (!canEditReviewer) return;
+                            final success = await checklistCtrl.submitChecklist(
+                              widget.projectId,
+                              1, // Phase 1
+                              'reviewer',
+                            );
+                            if (success) {
+                              setState(() {});
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Reviewer checklist submitted successfully',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          submissionInfo: checklistCtrl.submissionInfo(
+                            widget.projectId,
+                            1, // Phase 1
+                            'reviewer',
+                          ),
+                          canEdit: canEditReviewer,
+                        ),
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.all(8),
+                            itemCount: checklist.length,
+                            itemBuilder: (context, index) {
+                              final question = checklist[index];
+                              final isExpanded = reviewerExpanded.contains(
+                                index,
+                              );
+                              return Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: const BorderSide(color: Colors.green),
+                                ),
+                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                child: Column(
+                                  children: [
+                                    ListTile(
+                                      title: Text(
+                                        question.mainQuestion,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      trailing: Icon(
+                                        isExpanded
+                                            ? Icons.keyboard_arrow_up
+                                            : Icons.keyboard_arrow_down,
+                                      ),
+                                      onTap: () {
+                                        setState(() {
+                                          if (isExpanded) {
+                                            reviewerExpanded.remove(index);
+                                          } else {
+                                            reviewerExpanded.add(index);
+                                          }
+                                        });
+                                      },
+                                    ),
+                                    if (isExpanded)
+                                      Padding(
+                                        padding: const EdgeInsets.all(12.0),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: question.subQuestions.map((
+                                            subQ,
+                                          ) {
+                                            return Padding(
+                                              padding: const EdgeInsets.only(
+                                                bottom: 10,
+                                              ),
+                                              child: SubQuestionCard(
+                                                key: ValueKey("reviewer_$subQ"),
+                                                subQuestion: subQ,
+                                                editable: canEditReviewer,
+                                                initialData:
+                                                    reviewerAnswers[subQ] ??
+                                                    checklistCtrl.getAnswers(
+                                                      widget.projectId,
+                                                      1, // Phase 1
+                                                      'reviewer',
+                                                      subQ,
+                                                    ),
+                                                onAnswer: (ans) {
+                                                  if (!canEditReviewer) return;
+                                                  setState(() {
+                                                    reviewerAnswers[subQ] = ans;
+                                                  });
+                                                  checklistCtrl.setAnswer(
+                                                    widget.projectId,
+                                                    1, // Phase 1
+                                                    'reviewer',
+                                                    subQ,
+                                                    ans,
+                                                  );
+                                                },
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -497,24 +620,31 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 // Simple submit bar widget
 class _SubmitBar extends StatelessWidget {
   final String role;
-  final String projectKey;
-  final VoidCallback onSubmit;
+  final String projectId;
+  final int phase;
+  final Future<void> Function() onSubmit;
   final Map<String, dynamic>? submissionInfo;
   final bool canEdit;
 
   const _SubmitBar({
     required this.role,
-    required this.projectKey,
+    required this.projectId,
+    required this.phase,
     required this.onSubmit,
     required this.submissionInfo,
-  this.canEdit = true,
+    this.canEdit = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final submitted = submissionInfo != null && (submissionInfo!['submitted'] == true);
-    final when = submissionInfo?['submittedAt'];
-  return Container(
+    final submitted = submissionInfo?['is_submitted'] == true;
+    final submittedAt = submissionInfo?['submitted_at'];
+    final when = submittedAt != null
+        ? (submittedAt is DateTime
+              ? submittedAt.toString().split('.')[0]
+              : submittedAt.toString())
+        : null;
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       color: Colors.white,
       child: Row(
@@ -530,17 +660,16 @@ class _SubmitBar extends StatelessWidget {
                 ),
               ],
             )
-      else
+          else
             ElevatedButton.icon(
-        onPressed: canEdit ? onSubmit : null,
+              onPressed: canEdit ? onSubmit : null,
               icon: const Icon(Icons.send),
-              label: Text('Submit ${role[0].toUpperCase()}${role.substring(1)} Checklist'),
+              label: Text(
+                'Submit ${role[0].toUpperCase()}${role.substring(1)} Checklist',
+              ),
             ),
           const Spacer(),
-          Text(
-            role.toUpperCase(),
-            style: TextStyle(color: Colors.grey[700]),
-          ),
+          Text(role.toUpperCase(), style: TextStyle(color: Colors.grey[700])),
         ],
       ),
     );
@@ -574,6 +703,10 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
   @override
   void initState() {
     super.initState();
+    _initializeData();
+  }
+
+  void _initializeData() {
     if (widget.initialData != null) {
       selectedOption = widget.initialData!['answer'];
       remarkController.text = widget.initialData!['remark'] ?? '';
@@ -581,6 +714,17 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
       if (imgs is List) {
         _images = List<Map<String, dynamic>>.from(imgs);
       }
+    }
+  }
+
+  @override
+  void didUpdateWidget(SubQuestionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If initialData changed, update the state
+    if (widget.initialData != oldWidget.initialData) {
+      setState(() {
+        _initializeData();
+      });
     }
   }
 
@@ -627,9 +771,9 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
           groupValue: selectedOption,
           onChanged: widget.editable
               ? (val) {
-            setState(() => selectedOption = val);
-            _updateAnswer();
-              }
+                  setState(() => selectedOption = val);
+                  _updateAnswer();
+                }
               : null,
         ),
         RadioListTile<String>(
@@ -638,9 +782,9 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
           groupValue: selectedOption,
           onChanged: widget.editable
               ? (val) {
-            setState(() => selectedOption = val);
-            _updateAnswer();
-              }
+                  setState(() => selectedOption = val);
+                  _updateAnswer();
+                }
               : null,
         ),
         Row(
@@ -661,7 +805,7 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
             IconButton(
               icon: const Icon(Icons.add_a_photo_outlined),
               onPressed: widget.editable ? _pickImages : null,
-            )
+            ),
           ],
         ),
         if (_images.isNotEmpty)
@@ -674,7 +818,9 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
                 final img = _images[i];
                 final rawBytes = img['bytes'];
                 final bytes = rawBytes is Uint8List ? rawBytes : null;
-                final name = img['name'] is String ? img['name'] as String : null;
+                final name = img['name'] is String
+                    ? img['name'] as String
+                    : null;
                 if (bytes == null) {
                   return const SizedBox(width: 0, height: 0);
                 }
@@ -684,8 +830,12 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(6),
-                        child: Image.memory(bytes,
-                            width: 100, height: 100, fit: BoxFit.cover),
+                        child: Image.memory(
+                          bytes,
+                          width: 100,
+                          height: 100,
+                          fit: BoxFit.cover,
+                        ),
                       ),
                       Positioned(
                         right: 4,
@@ -698,8 +848,11 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
                           child: const CircleAvatar(
                             radius: 10,
                             backgroundColor: Colors.black54,
-                            child: Icon(Icons.close,
-                                color: Colors.white, size: 14),
+                            child: Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 14,
+                            ),
                           ),
                         ),
                       ),
@@ -714,11 +867,13 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
                             child: Text(
                               name,
                               style: const TextStyle(
-                                  color: Colors.white, fontSize: 10),
+                                color: Colors.white,
+                                fontSize: 10,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        )
+                        ),
                     ],
                   ),
                 );
