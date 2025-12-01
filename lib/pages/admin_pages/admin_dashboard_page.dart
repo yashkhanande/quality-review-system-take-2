@@ -7,6 +7,8 @@ import '../../controllers/admin_dashboard_ui_controller.dart';
 import '../../components/admin_dialog.dart';
 import 'admin_project_details_page.dart';
 import '../../controllers/team_controller.dart';
+import 'package:file_picker/file_picker.dart';
+import '../../services/excel_import_service.dart';
 
 class AdminDashboardPage extends StatelessWidget {
   const AdminDashboardPage({super.key});
@@ -144,12 +146,12 @@ class AdminDashboardPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     'Welcome Back!',
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
+                  Spacer(),
                   ElevatedButton.icon(
                     onPressed: showCreateDialog,
                     icon: const Icon(Icons.add),
@@ -160,6 +162,40 @@ class AdminDashboardPage extends StatelessWidget {
                         vertical: 12,
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 12),
+                  
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final res = await FilePicker.platform.pickFiles(
+                        type: FileType.custom,
+                        allowedExtensions: const ['xlsx', 'xlsm', 'xls'],
+                        withData: true,
+                      );
+                      if (res == null || res.files.isEmpty) return;
+                      final bytes = res.files.first.bytes;
+                      if (bytes == null) return;
+                      final importer = ExcelImportService();
+                      final projects = importer.parse(bytes);
+                      for (final p in projects) {
+                        try {
+                          await projCtrl.createProjectRemote(p);
+                        } catch (e) {
+                          // ignore errors per item
+                        }
+                      }
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Imported ${projects.length} project(s) from Excel',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.file_upload),
+                    label: const Text('Import from Excel'),
                   ),
                 ],
               ),
