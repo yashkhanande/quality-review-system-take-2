@@ -574,6 +574,7 @@ class _RoleAssignmentSectionsState extends State<_RoleAssignmentSections> {
           );
         }
       }
+      
 
       await apply(
         leaderRoleId,
