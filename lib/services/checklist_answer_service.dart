@@ -22,6 +22,10 @@ class ChecklistAnswerService {
 
     try {
       final json = await http.getJson(uri);
+      print(
+        '📥 Raw response: ${json.toString().substring(0, json.toString().length > 200 ? 200 : json.toString().length)}...',
+      );
+
       final data = json['data'] as Map<String, dynamic>?;
 
       print('📦 Response data keys: ${data?.keys.toList()}');
@@ -36,14 +40,16 @@ class ChecklistAnswerService {
       data.forEach((key, value) {
         if (value is Map) {
           result[key] = Map<String, dynamic>.from(value as Map);
+          print('  ↳ Question: "$key" has answer: ${result[key]?['answer']}');
         }
       });
 
-      print('✓ Parsed ${result.length} answer entries');
+      print('✓ Parsed ${result.length} answer entries for $role');
 
       return result;
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ Error fetching checklist answers: $e');
+      print('Stack trace: $stackTrace');
       return {};
     }
   }
@@ -68,13 +74,17 @@ class ChecklistAnswerService {
 
     print('🌐 PUT: $uri');
     print('📤 Saving ${answers.length} answers for $role');
+    answers.forEach((question, data) {
+      print('  ↳ "$question": ${data['answer']} (remark: "${data['remark']}")');
+    });
 
     try {
-      await http.putJson(uri, body);
-      print('✓ Successfully saved answers');
+      final response = await http.putJson(uri, body);
+      print('✓ Successfully saved answers - Response: $response');
       return true;
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ Error saving checklist answers: $e');
+      print('Stack trace: $stackTrace');
       return false;
     }
   }

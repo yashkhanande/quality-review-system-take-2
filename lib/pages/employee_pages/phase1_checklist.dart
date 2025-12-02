@@ -220,6 +220,9 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     const phase = 1; // Phase 1
     print('🔄 Loading checklist data for project: ${widget.projectId}');
 
+    // Clear cache to force fresh load from backend
+    checklistCtrl.clearProjectCache(widget.projectId);
+
     await Future.wait([
       checklistCtrl.loadAnswers(widget.projectId, phase, 'executor'),
       checklistCtrl.loadAnswers(widget.projectId, phase, 'reviewer'),
@@ -276,6 +279,20 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           style: const TextStyle(color: Colors.white),
         ),
         backgroundColor: Colors.blue,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: 'Reload checklist data',
+            onPressed: _isLoadingData
+                ? null
+                : () {
+                    print('🔄 Manual refresh triggered');
+                    // Clear cache and reload
+                    checklistCtrl.clearProjectCache(widget.projectId);
+                    _loadChecklistData();
+                  },
+          ),
+        ],
       ),
       body: _isLoadingData
           ? const Center(

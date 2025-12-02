@@ -9,6 +9,8 @@ import '../services/role_service.dart';
 import '../services/project_membership_service.dart';
 import '../controllers/auth_controller.dart';
 import '../pages/employee_pages/checklist_controller.dart';
+import '../services/stage_service.dart';
+import '../services/phase_checklist_service.dart';
 
 class AppBindings extends Bindings {
   @override
@@ -23,6 +25,15 @@ class AppBindings extends Bindings {
     Get.put<RoleService>(RoleService(Get.find<SimpleHttp>()), permanent: true);
     Get.put<ProjectMembershipService>(
       ProjectMembershipService(Get.find<SimpleHttp>()),
+      permanent: true,
+    );
+    // Stage + Checklist services (stage-based API)
+    Get.put<StageService>(
+      StageService(Get.find<SimpleHttp>()),
+      permanent: true,
+    );
+    Get.put<PhaseChecklistService>(
+      PhaseChecklistService(Get.find<SimpleHttp>()),
       permanent: true,
     );
 
