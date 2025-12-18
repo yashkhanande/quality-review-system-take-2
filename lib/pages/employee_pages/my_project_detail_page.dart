@@ -7,7 +7,7 @@ import '../../components/project_detail_info.dart';
 import '../../services/project_membership_service.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/projects_controller.dart';
-import 'phase1_checklist.dart';
+import 'checklist.dart';
 
 class MyProjectDetailPage extends StatefulWidget {
   final Project project;

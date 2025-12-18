@@ -8,6 +8,8 @@ import '../services/user_service.dart';
 import '../services/role_service.dart';
 import '../services/project_membership_service.dart';
 import '../services/template_service.dart';
+import '../services/stage_service.dart';
+import '../services/phase_checklist_service.dart';
 import '../controllers/auth_controller.dart';
 import '../pages/employee_pages/checklist_controller.dart';
 import '../services/checklist_answer_service.dart';
@@ -39,6 +41,14 @@ class AppBindings extends Bindings {
     );
     Get.put<TemplateService>(
       TemplateService(Get.find<SimpleHttp>()),
+      permanent: true,
+    );
+    Get.put<StageService>(
+      StageService(Get.find<SimpleHttp>()),
+      permanent: true,
+    );
+    Get.put<PhaseChecklistService>(
+      PhaseChecklistService(Get.find<SimpleHttp>()),
       permanent: true,
     );
 

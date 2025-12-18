@@ -8,7 +8,7 @@ import '../../services/project_service.dart';
 import '../../services/project_membership_service.dart';
 import '../../services/role_service.dart';
 import '../../models/role.dart';
-import 'phase1_checklist.dart';
+import 'checklist.dart';
 import '../../services/approval_service.dart';
 
 class EmployeeProjectDetailPage extends StatefulWidget {
