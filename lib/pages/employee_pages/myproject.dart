@@ -367,6 +367,18 @@ class _MyprojectState extends State<Myproject> {
                                   child: Row(
                                     children: [
                                       Expanded(
+                                        flex: 2,
+                                        child: const Text(
+                                          'Project No.',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.blueGrey,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
                                         flex: 3,
                                         child: _HeaderCell(
                                           label: 'Project Title',
@@ -470,6 +482,21 @@ class _MyprojectState extends State<Myproject> {
                                           ),
                                           child: Row(
                                             children: [
+                                              Expanded(
+                                                flex: 2,
+                                                child: Text(
+                                                  (project.projectNo
+                                                              ?.trim()
+                                                              .isNotEmpty ??
+                                                          false)
+                                                      ? project.projectNo!
+                                                            .trim()
+                                                      : '--',
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
                                               Expanded(
                                                 flex: 3,
                                                 child: Text(

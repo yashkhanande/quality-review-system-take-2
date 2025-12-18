@@ -238,6 +238,18 @@ class _AdminDashboardPageState extends State<EmployeeDashboard> {
                       child: Row(
                         children: [
                           Expanded(
+                            flex: 2,
+                            child: const Text(
+                              'Project No.',
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blueGrey,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          Expanded(
                             flex: 3,
                             child: _HeaderCell(
                               label: 'Project Title',
@@ -341,6 +353,17 @@ class _AdminDashboardPageState extends State<EmployeeDashboard> {
                               ),
                               child: Row(
                                 children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      (proj.projectNo?.trim().isNotEmpty ??
+                                              false)
+                                          ? proj.projectNo!.trim()
+                                          : '--',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
                                   Expanded(
                                     flex: 3,
                                     child: Text(
