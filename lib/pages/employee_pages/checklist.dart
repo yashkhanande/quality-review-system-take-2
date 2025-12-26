@@ -115,6 +115,15 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   int _totalCheckpoints = 0; // Total number of checkpoints
   Map<String, Map<String, dynamic>> _defectCategories = {};
   final Map<String, String?> _selectedDefectCategory = {};
+  // Cumulative defect tracking
+  double _cumulativeDefectRate = 0.0; // Accumulated defect rate percentage
+  int _cumulativeDefectCount = 0; // Total defects found so far
+  int _maxCheckpointsSeen = 0; // Highest checkpoint count seen
+  // Session-level tracking: track highest defects seen, not just current
+  int _maxDefectsSeenInSession = 0; // Highest defect count in this session
+  int _totalCheckpointsInSession = 0; // Total checkpoints for this session
+  // Revert tracking
+  int _revertCount = 0; // Number of times checklist was reverted by SDH
 
   ApprovalService get _approvalService => Get.find<ApprovalService>();
 
@@ -408,6 +417,24 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         if (mounted) _approvalStatus = appr;
       } catch (_) {}
 
+      // Step 5b: Fetch revert count for this phase from DB
+      try {
+        final revertCountFromDb = await _approvalService.getRevertCount(
+          widget.projectId,
+          phase,
+        );
+        if (mounted) {
+          setState(() {
+            _revertCount = revertCountFromDb;
+            debugPrint(
+              '✓ Revert count loaded from DB: $_revertCount for phase $phase',
+            );
+          });
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error loading revert count: $e');
+      }
+
       final executorSheet = checklistCtrl.getRoleSheet(
         widget.projectId,
         phase,
@@ -549,7 +576,45 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         _checkpointsByChecklist = checkpointCounts;
         _defectsTotal = total;
         _totalCheckpoints = totalCheckpoints;
+        // Update max checkpoints if needed
+        if (totalCheckpoints > _maxCheckpointsSeen) {
+          _maxCheckpointsSeen = totalCheckpoints;
+        }
+        // Track the highest defects seen in this session
+        // Even if conflicts are fixed later, we remember the max we saw
+        if (total > _maxDefectsSeenInSession) {
+          _maxDefectsSeenInSession = total;
+        }
+        _totalCheckpointsInSession = totalCheckpoints;
+        debugPrint(
+          '📊 Defects recomputed: current=$total, max_in_session=$_maxDefectsSeenInSession, total_checkpoints=$totalCheckpoints',
+        );
       });
+    }
+  }
+
+  /// Accumulate maximum defects from this session into cumulative defect rate
+  /// This ensures that even if conflicts are fixed before submission,
+  /// the maximum defects encountered are still counted
+  void _accumulateDefects() {
+    if (_totalCheckpointsInSession > 0 && _maxDefectsSeenInSession > 0) {
+      // Calculate rate based on max defects in session
+      final sessionDefectRate =
+          (_maxDefectsSeenInSession / _totalCheckpointsInSession) * 100.0;
+      _cumulativeDefectRate += sessionDefectRate;
+      _cumulativeDefectCount += _maxDefectsSeenInSession;
+
+      debugPrint(
+        '✅ Defects accumulated from session: max_defects=$_maxDefectsSeenInSession, session_rate=$sessionDefectRate%, total_checkpoints=$_totalCheckpointsInSession, cumulative_rate=${_cumulativeDefectRate.toStringAsFixed(2)}%',
+      );
+
+      // Reset session tracking for next submission
+      _maxDefectsSeenInSession = 0;
+      _totalCheckpointsInSession = 0;
+    } else {
+      debugPrint(
+        '⚠️ No defects to accumulate in this session. max_in_session=$_maxDefectsSeenInSession, total_checkpoints=$_totalCheckpointsInSession',
+      );
     }
   }
 
@@ -742,6 +807,26 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                       widget.projectId,
                       _selectedPhase,
                     );
+                    // Increment revert count in DB and update locally
+                    try {
+                      final updatedCount = await _approvalService
+                          .incrementRevertCount(
+                            widget.projectId,
+                            _selectedPhase,
+                          );
+                      setState(() {
+                        _revertCount = updatedCount;
+                        debugPrint(
+                          '🔄 Checklist reverted. Revert count updated to: $_revertCount for phase $_selectedPhase',
+                        );
+                      });
+                    } catch (e) {
+                      debugPrint('⚠️ Error updating revert count: $e');
+                      // Fallback: increment locally if DB update fails
+                      setState(() {
+                        _revertCount++;
+                      });
+                    }
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('Reverted to current stage.'),
@@ -820,9 +905,77 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                   if (isSDH)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: _DefectSummaryBar(
-                        totalDefects: _defectsTotal,
-                        totalCheckpoints: _totalCheckpoints,
+                      child: Column(
+                        children: [
+                          _DefectSummaryBar(
+                            totalDefects: _defectsTotal,
+                            totalCheckpoints: _totalCheckpoints,
+                            cumulativeDefectRate: _cumulativeDefectRate,
+                            cumulativeDefectCount: _cumulativeDefectCount,
+                            maxDefectsInSession: _maxDefectsSeenInSession,
+                            totalCheckpointsInSession:
+                                _totalCheckpointsInSession,
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _revertCount > 0
+                                  ? Colors.orange.shade50
+                                  : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _revertCount > 0
+                                    ? Colors.orange
+                                    : Colors.grey,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.loop,
+                                  size: 20,
+                                  color: _revertCount > 0
+                                      ? Colors.orange
+                                      : Colors.grey,
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Loopback Count (Debug):',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _revertCount > 0
+                                        ? Colors.orange
+                                        : Colors.grey,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '$_revertCount',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   if (_editMode)
@@ -934,6 +1087,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                           },
                           onSubmit: () async {
                             if (!canEditExecutorPhase) return;
+                            // Accumulate current defects before submission
+                            _accumulateDefects();
                             final success = await checklistCtrl.submitChecklist(
                               widget.projectId,
                               _selectedPhase,
@@ -990,6 +1145,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                           },
                           onSubmit: () async {
                             if (!canEditReviewerPhase) return;
+                            // Accumulate current defects before submission
+                            _accumulateDefects();
                             final success = await checklistCtrl.submitChecklist(
                               widget.projectId,
                               _selectedPhase,
@@ -1642,61 +1799,114 @@ class _DefectChip extends StatelessWidget {
 class _DefectSummaryBar extends StatelessWidget {
   final int totalDefects;
   final int totalCheckpoints;
+  final double cumulativeDefectRate;
+  final int cumulativeDefectCount;
+  final int maxDefectsInSession;
+  final int totalCheckpointsInSession;
   const _DefectSummaryBar({
     required this.totalDefects,
     required this.totalCheckpoints,
+    required this.cumulativeDefectRate,
+    required this.cumulativeDefectCount,
+    required this.maxDefectsInSession,
+    required this.totalCheckpointsInSession,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Calculate defect rate percentage: (defects / total checkpoints) * 100
-    final defectRate = totalCheckpoints > 0
-        ? ((totalDefects / totalCheckpoints) * 100).toStringAsFixed(2)
-        : '0.00';
-    final hasDefects = totalDefects > 0;
+    // Calculate rate based on max defects seen in this session
+    // This ensures the rate never decreases even if conflicts are fixed
+    final sessionDefectRate = totalCheckpointsInSession > 0
+        ? ((maxDefectsInSession / totalCheckpointsInSession) * 100)
+        : 0.0;
+    // Combined rate: cumulative + max seen in this session (never goes below cumulative)
+    final combinedRate = (cumulativeDefectRate + sessionDefectRate).clamp(
+      0.0,
+      100.0,
+    );
+    final defectRateDisplay = combinedRate.toStringAsFixed(2);
+    final hasSessionDefects = maxDefectsInSession > 0;
+    final hasCumulativeDefects = cumulativeDefectRate > 0;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: hasDefects ? Colors.red.shade50 : Colors.green.shade50,
+        color: (hasSessionDefects || hasCumulativeDefects)
+            ? Colors.red.shade50
+            : Colors.green.shade50,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: hasDefects ? Colors.redAccent : Colors.green),
+        border: Border.all(
+          color: (hasSessionDefects || hasCumulativeDefects)
+              ? Colors.redAccent
+              : Colors.green,
+        ),
       ),
       child: Row(
         children: [
           Icon(
-            hasDefects ? Icons.error_outline : Icons.check_circle_outline,
+            (hasSessionDefects || hasCumulativeDefects)
+                ? Icons.error_outline
+                : Icons.check_circle_outline,
             size: 22,
-            color: hasDefects ? Colors.red : Colors.green,
+            color: (hasSessionDefects || hasCumulativeDefects)
+                ? Colors.red
+                : Colors.green,
           ),
           const SizedBox(width: 10),
           const Text(
-            'Defect Rate',
+            'Cumulative Defect Rate',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: hasDefects ? Colors.redAccent : Colors.green,
+              color: (hasSessionDefects || hasCumulativeDefects)
+                  ? Colors.redAccent
+                  : Colors.green,
               borderRadius: BorderRadius.circular(999),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '$defectRate%',
+                  '$defectRateDisplay%',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
-                Text(
-                  '($totalDefects/$totalCheckpoints)',
-                  style: const TextStyle(fontSize: 10, color: Colors.white),
+                RichText(
+                  text: TextSpan(
+                    style: const TextStyle(fontSize: 10, color: Colors.white),
+                    children: [
+                      TextSpan(
+                        text: hasSessionDefects
+                            ? '($maxDefectsInSession max in session'
+                            : '(no defects in session',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: hasSessionDefects
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      if (hasCumulativeDefects)
+                        TextSpan(
+                          text:
+                              ' + ${cumulativeDefectCount.toStringAsFixed(0)} historical)',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      else
+                        const TextSpan(text: ')'),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1965,8 +2175,8 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
               child: Text(
                 widget.subQuestion,
                 style: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
               ),
             ),
@@ -2099,12 +2309,12 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
                         ? (val) {
                             setState(() => selectedCategory = val);
 
-                            if (val != null &&
-                                widget.checkpointId != null &&
+                            if (widget.checkpointId != null &&
                                 widget.onCategoryAssigned != null) {
+                              // Call callback for both setting and clearing category
                               widget.onCategoryAssigned!(
                                 widget.checkpointId!,
-                                val,
+                                val ?? '', // Pass empty string for None/clear
                               );
                             }
                           }
