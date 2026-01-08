@@ -2262,6 +2262,15 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
       if (remarkController.text != newRemark) remarkController.text = newRemark;
       final imgs = widget.initialData!['images'];
       if (imgs is List) _images = List<Map<String, dynamic>>.from(imgs);
+      // Restore categoryId and severity from saved answer
+      final savedCategoryId = widget.initialData!['categoryId'];
+      if (savedCategoryId != null && (savedCategoryId as String).isNotEmpty) {
+        selectedCategory = savedCategoryId as String;
+      }
+      final savedSeverity = widget.initialData!['severity'];
+      if (savedSeverity != null && (savedSeverity as String).isNotEmpty) {
+        selectedSeverity = savedSeverity as String;
+      }
     }
   }
 
@@ -2452,9 +2461,9 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Analyzing remark for category suggestion...',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                const Text(
+                  'Fetching suggestions...',
+                  style: TextStyle(fontSize: 12),
                 ),
               ],
             ),
@@ -2465,39 +2474,29 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Suggested categories",
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                const Text(
+                  'Suggested Categories:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
-                ..._localSuggestions.map((s) {
-                  final confidence = (s['confidence'] as num?)?.toStringAsFixed(
-                    0,
-                  );
-                  return Card(
-                    color: Colors.grey.shade100,
-                    child: ListTile(
-                      dense: true,
-                      title: Text((s['categoryName'] ?? 'Unknown').toString()),
-                      subtitle: confidence != null
-                          ? Text(
-                              'Confidence ~$confidence% | matches ${s['matchCount']} of ${s['tokenCount']}',
-                            )
-                          : null,
-                      trailing: TextButton(
-                        onPressed: widget.editable
-                            ? () => _acceptLocalSuggestion(s)
-                            : null,
-                        child: const Text("Choose"),
-                      ),
-                      onTap: widget.editable
-                          ? () => _acceptLocalSuggestion(s)
-                          : null,
-                    ),
-                  );
-                }).toList(),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _localSuggestions.map((suggestion) {
+                    final categoryName = (suggestion['categoryName'] ?? '')
+                        .toString();
+                    final categoryId = (suggestion['suggestedCategoryId'] ?? '')
+                        .toString();
+                    final isSelected = selectedCategory == categoryId;
+                    return FilterChip(
+                      label: Text(categoryName),
+                      selected: isSelected,
+                      onSelected: (_) => _acceptLocalSuggestion(suggestion),
+                      backgroundColor: Colors.blue.shade50,
+                      selectedColor: Colors.blue.shade200,
+                    );
+                  }).toList(),
+                ),
               ],
             ),
           ),
@@ -2508,8 +2507,7 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
             padding: const EdgeInsets.only(top: 8.0),
             child: Container(
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.blue.shade300),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
                 color: Colors.blue.shade50,
               ),
               padding: const EdgeInsets.all(10),
@@ -2519,25 +2517,28 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Suggested: ${_categorySuggestion!['categoryName'] ?? 'Unknown'}',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        const Text(
+                          'AI Suggestion:',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Confidence: ${((_categorySuggestion!['confidence'] ?? 0) as num).toStringAsFixed(0)}%',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[700],
-                          ),
+                          (_categorySuggestion?['categoryName'] ??
+                                  'No suggestion')
+                              .toString(),
+                          style: const TextStyle(fontSize: 13),
                         ),
                       ],
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: widget.editable ? _acceptSuggestion : null,
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text('Accept'),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _acceptSuggestion,
+                    child: const Text('Accept', style: TextStyle(fontSize: 12)),
                   ),
                 ],
               ),
@@ -2626,7 +2627,17 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
                     onChanged: widget.editable
                         ? (val) {
                             setState(() => selectedCategory = val);
-                            // Category will be saved with answer via _updateAnswer
+                            // Assign category to backend if provided
+                            if (val != null &&
+                                widget.checkpointId != null &&
+                                widget.onCategoryAssigned != null) {
+                              widget.onCategoryAssigned!(
+                                widget.checkpointId!,
+                                val,
+                                severity: _currentSelectedSeverity(),
+                              );
+                            }
+                            // Save answer with category
                             _updateAnswer();
                           }
                         : null,
@@ -2709,7 +2720,17 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
                     onChanged: widget.editable
                         ? (val) {
                             setState(() => selectedSeverity = val);
-                            // Severity will be saved with answer via _updateAnswer
+                            // Assign severity to backend along with category if available
+                            if (widget.checkpointId != null &&
+                                widget.onCategoryAssigned != null &&
+                                selectedCategory != null) {
+                              widget.onCategoryAssigned!(
+                                widget.checkpointId!,
+                                selectedCategory,
+                                severity: val,
+                              );
+                            }
+                            // Save answer with severity
                             _updateAnswer();
                           }
                         : null,
@@ -2811,8 +2832,8 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
     _debounceTimer?.cancel();
     // Only compute suggestions for reviewer role
     if (widget.role == 'reviewer') {
-      _computeLocalSuggestions(newRemark);
-      _debounceTimer = Timer(const Duration(milliseconds: 600), () {
+      _debounceTimer = Timer(const Duration(milliseconds: 400), () {
+        _computeLocalSuggestions(newRemark);
         _fetchCategorySuggestion(newRemark);
       });
     }
@@ -2858,7 +2879,15 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
       selectedCategory = categoryId;
       _showSuggestion = false;
     });
-    // Category will be saved when answer is submitted
+    // Immediately assign category to backend and update answer
+    if (widget.checkpointId != null && widget.onCategoryAssigned != null) {
+      widget.onCategoryAssigned!(
+        widget.checkpointId!,
+        categoryId,
+        severity: _currentSelectedSeverity(),
+      );
+    }
+    // Update answer with category - this persists to local cache
     _updateAnswer();
   }
 
@@ -2866,7 +2895,14 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
     final categoryId = (suggestion['suggestedCategoryId'] ?? '').toString();
     if (categoryId.isEmpty) return;
     setState(() => selectedCategory = categoryId);
-    // Category will be saved when answer is submitted
+    // Immediately assign category to backend
+    if (widget.checkpointId != null && widget.onCategoryAssigned != null) {
+      widget.onCategoryAssigned!(
+        widget.checkpointId!,
+        categoryId,
+        severity: _currentSelectedSeverity(),
+      );
+    }
     _updateAnswer();
   }
 
@@ -2921,21 +2957,14 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
           }
         }
       }
-      final confidence = normalized.isNotEmpty
-          ? (matchCount / normalized.length) * 100
-          : 0.0;
       if (matchCount > 0) {
-        suggestions.add({
-          'suggestedCategoryId': id,
-          'categoryName': name,
-          'confidence': confidence,
-          'matchCount': matchCount,
-          'tokenCount': normalized.length,
-        });
+        suggestions.add({'suggestedCategoryId': id, 'categoryName': name});
       }
     }
+    // Sort by name for consistent ordering
     suggestions.sort(
-      (a, b) => (b['confidence'] as num).compareTo(a['confidence'] as num),
+      (a, b) =>
+          (a['categoryName'] as String).compareTo(b['categoryName'] as String),
     );
     setState(() {
       _localSuggestions = suggestions.take(5).toList();
