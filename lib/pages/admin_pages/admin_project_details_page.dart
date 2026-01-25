@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:quality_review/components/admin_dialog.dart';
+import 'package:quality_review/controllers/project_details_controller.dart';
+import 'package:quality_review/controllers/projects_controller.dart';
+import 'package:quality_review/controllers/team_controller.dart';
+import 'package:quality_review/models/role.dart';
+import 'package:quality_review/services/project_membership_service.dart';
+import 'package:quality_review/services/project_service.dart';
+import 'package:quality_review/services/role_service.dart';
 import '../../models/project.dart';
-import '../../controllers/projects_controller.dart';
-import '../../controllers/team_controller.dart';
-import '../../components/admin_dialog.dart';
-import '../../controllers/project_details_controller.dart';
-import '../../services/project_service.dart';
-import '../../services/project_membership_service.dart';
-import '../../services/role_service.dart';
-import '../../models/role.dart';
 
 class AdminProjectDetailsPage extends StatefulWidget {
   final Project project;

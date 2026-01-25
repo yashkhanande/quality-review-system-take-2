@@ -157,8 +157,10 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   late final ChecklistController checklistCtrl;
   String? _currentStageId;
   bool _isLoadingData = true;
-  int _selectedPhase = 1;
-  int _activePhase = 1;
+  // UI phase numbering starts at 1 but maps to actual phases starting at 2
+  int _selectedPhase = 1; // UI phase 1 == actual phase 2
+  int _activePhase = 1; // UI active phase index
+  int _maxActualPhase = 7; // discovered from stage names; actual phases count
   Map<String, dynamic>? _approvalStatus;
   Map<String, dynamic>? _compareStatus;
   final ScrollController _executorScroll = ScrollController();
@@ -288,7 +290,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       _selectedDefectSeverity.clear();
     });
 
-    final phase = _selectedPhase;
+    // Map UI phase to actual phase by adding 1 (skipping actual phase 1)
+    final phase = _selectedPhase + 1;
 
     try {
       print(
@@ -320,6 +323,20 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 
       final stages = await stageService.listStages(widget.projectId);
       print('✓ Stages fetched: ${stages.length} stages found');
+
+      // Discover maximum actual phase number from stage names (e.g., "Phase 2", "Phase 3", ...)
+      int discoveredMaxActual = 1;
+      for (final s in stages) {
+        final name = (s['stage_name'] ?? '').toString().toLowerCase();
+        final match = RegExp(r'phase\s*(\d+)').firstMatch(name);
+        if (match != null) {
+          final p = int.tryParse(match.group(1) ?? '') ?? 0;
+          if (p > discoveredMaxActual) discoveredMaxActual = p;
+        }
+      }
+      setState(() {
+        _maxActualPhase = discoveredMaxActual;
+      });
 
       if (stages.isEmpty) {
         print('❌ No stages found');
@@ -415,14 +432,35 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 
         if (checklists.isEmpty) {
           print('❌ No checklists returned for this stage');
-          if (!mounted) return;
-          setState(() {
-            checklist = [];
-            _isLoadingData = false;
-            _errorMessage =
-                'No checklists available for this stage. Ensure templates/checkpoints exist.';
-          });
-          return;
+          // As a last fallback, mirror admin template for this phase
+          try {
+            final templateService = Get.find<TemplateService>();
+            final template = await templateService.fetchTemplate();
+            final stageKey = 'stage$phase';
+            final stageData = template[stageKey];
+            if (stageData is List && stageData.isNotEmpty) {
+              print('↩️ Building checklist from admin template "$stageKey"');
+              loadedChecklist = _questionsFromTemplateStage(stageData);
+            } else if (stageData is Map && stageData.isNotEmpty) {
+              print(
+                '↩️ Building checklist from admin template map "$stageKey"',
+              );
+              loadedChecklist = _questionsFromTemplateStage([stageData]);
+            }
+          } catch (e) {
+            print('⚠️ Template fallback failed: $e');
+          }
+
+          if (loadedChecklist.isEmpty) {
+            if (!mounted) return;
+            setState(() {
+              checklist = [];
+              _isLoadingData = false;
+              _errorMessage =
+                  'No checklists available for this stage. Ensure templates/checkpoints exist.';
+            });
+            return;
+          }
         }
 
         // Step 4b: Build question list from old structure
@@ -497,6 +535,26 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           }
         }
       } // Close the if (loadedChecklist.isEmpty) block
+
+      // If old structure produced no questions (e.g., 0 checkpoints), mirror template
+      if (loadedChecklist.isEmpty) {
+        try {
+          final templateService = Get.find<TemplateService>();
+          final template = await templateService.fetchTemplate();
+          final stageKey = 'stage$phase';
+          final stageData = template[stageKey];
+          if (stageData is List && stageData.isNotEmpty) {
+            print(
+              '↩️ No questions from project checklists; mirroring admin template $stageKey',
+            );
+            loadedChecklist = _questionsFromTemplateStage(stageData);
+          } else if (stageData is Map && stageData.isNotEmpty) {
+            loadedChecklist = _questionsFromTemplateStage([stageData]);
+          }
+        } catch (e) {
+          print('⚠️ Final template fallback failed: $e');
+        }
+      }
 
       // Use the loaded checklist (either from ProjectChecklist or old structure)
       if (!mounted) return;
@@ -647,6 +705,76 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     }
   }
 
+  // Convert admin template stage data to our Questions structure
+  List<Question> _questionsFromTemplateStage(List<dynamic> stageData) {
+    final questions = <Question>[];
+    for (final group in stageData) {
+      if (group is! Map<String, dynamic>) continue;
+      final groupId = (group['_id'] ?? '').toString();
+      final groupName = (group['text'] ?? group['groupName'] ?? '').toString();
+      if (groupName.isEmpty) continue;
+
+      final subs = <Map<String, String>>[];
+
+      // Direct checkpoints/questions under group
+      final checkpoints = (group['checkpoints'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      for (final cp in checkpoints) {
+        subs.add({
+          'id': (cp['_id'] ?? '').toString(),
+          'text': (cp['text'] ?? cp['question'] ?? '').toString(),
+          'categoryId': (cp['categoryId'] ?? '').toString(),
+        });
+      }
+
+      // Section-based checkpoints/questions
+      final sections = (group['sections'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      for (final section in sections) {
+        final sectionName = (section['text'] ?? section['sectionName'] ?? '')
+            .toString();
+        final sectionCps = (section['checkpoints'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .toList();
+        final sectionQs = (section['questions'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .toList();
+
+        for (final cp in sectionCps) {
+          subs.add({
+            'id': (cp['_id'] ?? '').toString(),
+            'text': (cp['text'] ?? cp['question'] ?? '').toString(),
+            'categoryId': (cp['categoryId'] ?? '').toString(),
+            'sectionName': sectionName,
+          });
+        }
+        for (final q in sectionQs) {
+          subs.add({
+            'id': (q['_id'] ?? '').toString(),
+            'text': (q['text'] ?? '').toString(),
+            'categoryId': (q['categoryId'] ?? '').toString(),
+            'sectionName': sectionName,
+          });
+        }
+      }
+
+      if (subs.isNotEmpty) {
+        questions.add(
+          Question(
+            mainQuestion: groupName,
+            subQuestions: subs
+                .where((m) => (m['text'] ?? '').isNotEmpty)
+                .toList(),
+            checklistId: groupId,
+          ),
+        );
+      }
+    }
+    return questions;
+  }
+
   void _recomputeDefects() {
     // Compute defects locally from current answers - much simpler and more reliable
     print('🔍 Starting defect computation...');
@@ -783,22 +911,25 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     } catch (_) {}
     if (!mounted) return;
     setState(() {
-      _activePhase = active;
-      // If selected phase exceeds known phases cap at active
+      // Convert actual active phase to UI phase: UI = max(1, actual-1)
+      _activePhase = active <= 1 ? 1 : active - 1;
+      // Clamp selected UI phase within [1, _activePhase]
       if (_selectedPhase > _activePhase) _selectedPhase = _activePhase;
+      if (_selectedPhase < 1) _selectedPhase = 1;
     });
     // Refresh approval/compare for the currently selected phase
     try {
+      // Use actual phase when comparing approval status
       final status = await _approvalService.compare(
         widget.projectId,
-        _selectedPhase,
+        _selectedPhase + 1,
       );
       if (mounted) setState(() => _compareStatus = status);
     } catch (_) {}
     try {
       final appr = await _approvalService.getStatus(
         widget.projectId,
-        _selectedPhase,
+        _selectedPhase + 1,
       );
       if (mounted) setState(() => _approvalStatus = appr);
     } catch (_) {}
@@ -867,50 +998,56 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
               alignment: Alignment.center,
               dropdownColor: Colors.white,
               icon: const Icon(Icons.expand_more, color: Colors.white),
-              items: [1, 2, 3]
-                  .map(
-                    (p) => DropdownMenuItem(
-                      value: p,
-                      enabled: p <= _activePhase,
-                      child: Row(
-                        children: [
-                          Text('Phase $p'),
-                          const SizedBox(width: 8),
-                          if (p < _activePhase)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black12,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text(
-                                'View only',
-                                style: TextStyle(fontSize: 10),
-                              ),
-                            )
-                          else if (p == _activePhase)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.green.shade200,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Text(
-                                'Active',
-                                style: TextStyle(fontSize: 10),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  )
-                  .toList(),
+              // Build UI phase list dynamically from actual phases [2.._maxActualPhase]
+              items:
+                  List<int>.generate(
+                        (_maxActualPhase - 1).clamp(1, 10),
+                        (i) => i + 1, // UI phases start at 1
+                      )
+                      .map(
+                        (p) => DropdownMenuItem(
+                          value: p,
+                          enabled: p <= _activePhase,
+                          child: Row(
+                            children: [
+                              // Show UI phase number, but represents actual phase = p+1
+                              Text('Phase $p'),
+                              const SizedBox(width: 8),
+                              if (p < _activePhase)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black12,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Text(
+                                    'View only',
+                                    style: TextStyle(fontSize: 10),
+                                  ),
+                                )
+                              else if (p == _activePhase)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade200,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Text(
+                                    'Active',
+                                    style: TextStyle(fontSize: 10),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
               onChanged: (val) async {
                 if (val == null) return;
                 // Restrict jumping ahead of active phase
@@ -961,7 +1098,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                   try {
                     await _approvalService.approve(
                       widget.projectId,
-                      _selectedPhase,
+                      _selectedPhase + 1, // actual phase
                     );
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -978,7 +1115,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                   try {
                     await _approvalService.revert(
                       widget.projectId,
-                      _selectedPhase,
+                      _selectedPhase + 1, // actual phase
                     );
 
                     // Clear submission cache to force reload from backend

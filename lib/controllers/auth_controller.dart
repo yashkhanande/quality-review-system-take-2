@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'package:get/get.dart';
+import 'package:quality_review/controllers/projects_controller.dart';
+import 'package:quality_review/models/auth_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/auth_user.dart';
 import '../services/auth_service.dart';
 import '../services/http_client.dart';
-import '../controllers/projects_controller.dart';
 
 class AuthController extends GetxController {
   final Rx<AuthUser?> currentUser = Rx<AuthUser?>(null);
