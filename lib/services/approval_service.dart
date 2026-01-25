@@ -1,4 +1,5 @@
-import '../config/api_config.dart';
+import 'package:quality_review/config/api_config.dart';
+
 import 'http_client.dart';
 
 class ApprovalService {
