@@ -9,8 +9,8 @@ import '../../services/project_membership_service.dart';
 import '../../services/role_service.dart';
 import '../../models/role.dart';
 import '../../models/project_membership.dart';
-import 'phase1_checklist.dart';
 import '../../services/approval_service.dart';
+import '../../services/stage_service.dart';
 
 class EmployeeProjectDetailPage extends StatefulWidget {
   final Project project;
@@ -177,38 +177,7 @@ class _EmployeeProjectDetailsPageState
                       ),
                     ),
                     const SizedBox(height: 24),
-                    _PhaseCards(
-                      project: details.project,
-                      onOpenChecklist: (phase) {
-                        final proj = details.project;
-                        // Derive names from IDs using TeamController
-                        List<String> _namesFrom(Set<String> ids) {
-                          return ids
-                              .map(
-                                (id) => _teamCtrl.members
-                                    .firstWhereOrNull((m) => m.id == id)
-                                    ?.name,
-                              )
-                              .whereType<String>()
-                              .toList();
-                        }
-
-                        final leaders = _namesFrom(details.teamLeaderIds);
-                        final reviewers = _namesFrom(details.reviewerIds);
-                        final executors = _namesFrom(details.executorIds);
-                        Get.to(
-                          () => QuestionsScreen(
-                            projectId: proj.id,
-                            projectTitle: proj.title,
-                            leaders: leaders,
-                            reviewers: reviewers,
-                            executors: executors,
-                            initialPhase: phase,
-                            // Optionally deep-link to specific sub-question: pass via initialSubQuestion
-                          ),
-                        );
-                      },
-                    ),
+                    _PhaseCards(project: details.project),
                     const SizedBox(height: 24),
                     Text(
                       'Assigned Team Members',
@@ -269,8 +238,7 @@ class _EmployeeProjectDetailsPageState
 
 class _PhaseCards extends StatefulWidget {
   final Project project;
-  final void Function(int phase) onOpenChecklist;
-  const _PhaseCards({required this.project, required this.onOpenChecklist});
+  const _PhaseCards({required this.project});
 
   @override
   State<_PhaseCards> createState() => _PhaseCardsState();
@@ -279,6 +247,7 @@ class _PhaseCards extends StatefulWidget {
 class _PhaseCardsState extends State<_PhaseCards> {
   int _activePhase = 1;
   final Map<int, bool> _answersDiffer = {};
+  final List<Map<String, dynamic>> _stages = [];
   bool _loading = true;
 
   @override
@@ -290,31 +259,70 @@ class _PhaseCardsState extends State<_PhaseCards> {
   Future<void> _prefetch() async {
     setState(() => _loading = true);
     try {
-      final ApprovalService svc = Get.find<ApprovalService>();
-      // Compute active phase from approvals
-      int ap = 1;
-      final st1 = await svc.getStatus(widget.project.id, 1);
-      if (st1 != null && st1['status'] == 'approved') {
-        ap = 2;
-        final st2 = await svc.getStatus(widget.project.id, 2);
-        if (st2 != null && st2['status'] == 'approved') {
-          ap = 3;
+      // Fetch actual stages from database
+      final stageService = Get.find<StageService>();
+      final stages = await stageService.listStages(widget.project.id);
+
+      if (stages.isEmpty) {
+        // No stages created yet (project not started)
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+
+      // Find the active stage based on status
+      int activePhaseNum = 1;
+      bool foundActive = false;
+
+      // First, check if any stage is currently in progress
+      for (int i = 0; i < stages.length; i++) {
+        final status = (stages[i]['status'] ?? '').toString().toLowerCase();
+        if (status == 'in_progress') {
+          activePhaseNum = i + 1;
+          foundActive = true;
+          break;
         }
       }
-      _activePhase = ap;
-      // Compare for phases
-      for (final p in [1, 2, 3]) {
+
+      // If no stage is in progress, find the first pending stage
+      if (!foundActive) {
+        for (int i = 0; i < stages.length; i++) {
+          final status = (stages[i]['status'] ?? '').toString().toLowerCase();
+          if (status == 'pending') {
+            activePhaseNum = i + 1;
+            break;
+          }
+        }
+      }
+
+      // Check for answer differences
+      final ApprovalService approvalSvc = Get.find<ApprovalService>();
+      for (int i = 0; i < stages.length; i++) {
+        final phaseNum = i + 1;
         try {
-          final cmp = await svc.compare(widget.project.id, p);
-          _answersDiffer[p] = !(cmp['match'] == true);
+          final cmp = await approvalSvc.compare(widget.project.id, phaseNum);
+          _answersDiffer[phaseNum] = !(cmp['match'] == true);
         } catch (_) {
-          _answersDiffer[p] = false;
+          _answersDiffer[phaseNum] = false;
         }
       }
-    } catch (_) {
-      _activePhase = 1;
+
+      if (mounted) {
+        setState(() {
+          _stages.clear();
+          _stages.addAll(stages);
+          _activePhase = activePhaseNum;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching stages: $e');
+      if (mounted) {
+        setState(() {
+          _activePhase = 1;
+          _loading = false;
+        });
+      }
     }
-    if (mounted) setState(() => _loading = false);
   }
 
   @override
@@ -330,67 +338,125 @@ class _PhaseCardsState extends State<_PhaseCards> {
             padding: EdgeInsets.all(8.0),
             child: LinearProgressIndicator(minHeight: 2),
           ),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [1, 2, 3].map((p) {
-            final isActive = p == activePhase;
-            final isOld = p < activePhase;
-            final canOpen = p <= activePhase;
-            final differs = _answersDiffer[p] == true;
-            final cardColor = differs ? Colors.red.shade50 : Colors.white;
-            final borderColor = differs
-                ? Colors.redAccent
-                : (isActive ? Colors.green : Colors.blueGrey);
-            return Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side: BorderSide(color: borderColor, width: 1),
+        if (!_loading && _stages.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue.shade600),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'No phases available. Phases will be created when the project is started.',
+                      style: TextStyle(color: Colors.black87),
+                    ),
+                  ),
+                ],
               ),
-              color: cardColor,
-              child: Container(
-                width: 220,
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: isActive
-                          ? Colors.green
-                          : (canOpen ? Colors.blueGrey : Colors.grey.shade300),
-                      child: Text(
-                        '$p',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Phase $p',
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              if (differs) _Badge(label: 'Answers differ'),
-                              if (isOld) _Badge(label: 'View only'),
-                              if (!canOpen) _Badge(label: 'Locked'),
-                              if (isActive) _Badge(label: 'Active'),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+            ),
+          ),
+        if (!_loading && _stages.isNotEmpty)
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: _stages.asMap().entries.map((entry) {
+              final index = entry.key;
+              final stage = entry.value;
+              final phaseNum = index + 1;
+              final stageName = (stage['stage_name'] ?? 'Phase $phaseNum')
+                  .toString();
+              final stageStatus = (stage['status'] ?? 'pending')
+                  .toString()
+                  .toLowerCase();
+
+              // Determine phase state
+              final isDone = stageStatus == 'completed';
+              final isActive = phaseNum == activePhase && !isDone;
+              final isInactive = phaseNum > activePhase;
+              final differs = _answersDiffer[phaseNum] == true;
+
+              // Determine colors
+              Color cardColor = Colors.white;
+              Color borderColor = Colors.blueGrey;
+              Color avatarColor = Colors.grey.shade300;
+
+              if (differs) {
+                cardColor = Colors.red.shade50;
+                borderColor = Colors.redAccent;
+              } else if (isDone) {
+                borderColor = Colors.blue.shade300;
+                avatarColor = Colors.blue.shade300;
+              } else if (isActive) {
+                borderColor = Colors.green;
+                avatarColor = Colors.green;
+              } else if (isInactive) {
+                avatarColor = Colors.grey.shade300;
+              }
+
+              return Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: BorderSide(color: borderColor, width: 1),
                 ),
-              ),
-            );
-          }).toList(),
-        ),
+                color: cardColor,
+                child: Container(
+                  width: 220,
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: avatarColor,
+                        child: Text(
+                          '$phaseNum',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              stageName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                if (differs) _Badge(label: 'Answers differ'),
+                                if (isDone)
+                                  _Badge(
+                                    label: 'Done',
+                                    color: Colors.blue.shade100,
+                                  ),
+                                if (isActive)
+                                  _Badge(
+                                    label: 'Active',
+                                    color: Colors.green.shade100,
+                                  ),
+                                if (isInactive)
+                                  _Badge(
+                                    label: 'Inactive',
+                                    color: Colors.grey.shade200,
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
       ],
     );
   }
@@ -398,13 +464,14 @@ class _PhaseCardsState extends State<_PhaseCards> {
 
 class _Badge extends StatelessWidget {
   final String label;
-  const _Badge({required this.label});
+  final Color? color;
+  const _Badge({required this.label, this.color});
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.black12,
+        color: color ?? Colors.black12,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(label, style: const TextStyle(fontSize: 10)),

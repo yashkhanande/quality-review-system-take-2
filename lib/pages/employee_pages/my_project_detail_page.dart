@@ -7,6 +7,7 @@ import '../../components/project_detail_info.dart';
 import '../../controllers/my_project_detail_controller.dart';
 import 'checklist.dart';
 import '../../services/template_service.dart';
+import '../../services/project_service.dart';
 
 class MyProjectDetailPage extends GetView<MyProjectDetailController> {
   final Project project;
@@ -16,6 +17,19 @@ class MyProjectDetailPage extends GetView<MyProjectDetailController> {
     required this.project,
     this.description,
   });
+
+  // Refresh project data from server to get accurate status
+  Future<void> _refreshProjectData(MyProjectDetailController controller) async {
+    try {
+      if (Get.isRegistered<ProjectService>()) {
+        final projectService = Get.find<ProjectService>();
+        final latestProject = await projectService.getById(project.id);
+        controller.project.value = latestProject;
+      }
+    } catch (e) {
+      debugPrint('Failed to refresh project data: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +44,10 @@ class MyProjectDetailPage extends GetView<MyProjectDetailController> {
       );
     }
     final c = Get.find<MyProjectDetailController>();
+
+    // Always fetch latest project data to ensure status is accurate
+    _refreshProjectData(c);
+
     // If the controller was already registered (navigated from another project),
     // make sure we update its state to reflect the newly selected project.
     // This prevents showing details from a previously opened project.
@@ -83,12 +101,10 @@ class MyProjectDetailPage extends GetView<MyProjectDetailController> {
                         ],
                         // Checklist button or info message
                         Obx(() {
-                          final status = c.project.value.status;
+                          final status = c.project.value.status.toLowerCase();
+                          // Only show checklist after project is started (In Progress or Completed)
                           final isAccessible =
-                              status.toLowerCase().contains('progress') ||
-                              status.toLowerCase().contains('review') ||
-                              status.toLowerCase().contains('execution') ||
-                              status.toLowerCase().contains('started');
+                              status == 'in progress' || status == 'completed';
 
                           if (isAccessible) {
                             return _ChecklistButton();
