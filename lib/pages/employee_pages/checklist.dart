@@ -1011,8 +1011,17 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       // active represents the next phase that's now active
       // active = 1 means phase 1 is active, active = 2 means phase 2 is active, etc.
       _activePhase = active;
-      // Clamp selected UI phase within [1, _activePhase]
-      if (_selectedPhase > _activePhase) _selectedPhase = _activePhase;
+      // Only clamp selected phase for non-SDH users
+      // SDH can view any phase including pending ones
+      final currentUserName = Get.isRegistered<AuthController>()
+          ? Get.find<AuthController>().currentUser.value?.name
+          : null;
+      final isSDH = currentUserName != null && authRoleIsSDH(currentUserName);
+      if (!isSDH) {
+        // Non-SDH users: clamp to active phase
+        if (_selectedPhase > _activePhase) _selectedPhase = _activePhase;
+      }
+      // Always ensure phase is at least 1
       if (_selectedPhase < 1) _selectedPhase = 1;
     });
     // Refresh approval/compare for the currently selected phase
@@ -1081,6 +1090,10 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         canEditExecutor && phaseEditable && !executorSubmitted;
     final canEditReviewerPhase =
         canEditReviewer && phaseEditable && !reviewerSubmitted;
+
+    // Check if current phase is already approved (no more actions allowed)
+    final phaseAlreadyApproved = _approvalStatus?['status'] == 'approved';
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -1094,7 +1107,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           // Approve and Revert buttons in the middle
           if (isSDH) ...[
             ElevatedButton.icon(
-              onPressed: reviewerSubmitted
+              onPressed: (reviewerSubmitted && !phaseAlreadyApproved)
                   ? () async {
                       try {
                         await _approvalService.approve(
@@ -1126,23 +1139,34 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                       }
                     }
                   : () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Waiting for reviewer response...'),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
+                      if (phaseAlreadyApproved) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Phase already approved!'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Waiting for reviewer response...'),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
                     },
               icon: const Icon(Icons.check_circle),
               label: const Text('Approve Phase'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: reviewerSubmitted ? Colors.green : Colors.grey,
+                backgroundColor: (reviewerSubmitted && !phaseAlreadyApproved)
+                    ? Colors.green
+                    : Colors.grey,
                 foregroundColor: Colors.white,
               ),
             ),
             const SizedBox(width: 8),
             ElevatedButton.icon(
-              onPressed: reviewerSubmitted
+              onPressed: (reviewerSubmitted && !phaseAlreadyApproved)
                   ? () async {
                       try {
                         await _approvalService.revert(
@@ -1181,17 +1205,28 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                       }
                     }
                   : () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Waiting for reviewer response...'),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
+                      if (phaseAlreadyApproved) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Phase already approved! Cannot revert.',
+                            ),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Waiting for reviewer response...'),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
                     },
               icon: const Icon(Icons.undo),
               label: const Text('Revert Phase'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: reviewerSubmitted
+                backgroundColor: (reviewerSubmitted && !phaseAlreadyApproved)
                     ? Colors.orange
                     : Colors.grey,
                 foregroundColor: Colors.white,
