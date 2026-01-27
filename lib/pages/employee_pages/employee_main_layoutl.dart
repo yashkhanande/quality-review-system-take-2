@@ -69,12 +69,7 @@ class _EmployeeMainLayoutState extends State<EmployeeMainLayout> {
           ),
 
           // Main Content (right) dndkf
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: pages[selectedIndex],
-            ),
-          ),
+          Expanded(child: pages[selectedIndex]),
         ],
       ),
     );

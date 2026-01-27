@@ -70,7 +70,7 @@ class AuthController extends GetxController {
         await projectsCtrl.refreshProjects();
 
         // Additional delay to ensure hydration completes
-        await Future.delayed(const Duration(milliseconds: 300));
+        // Removed delay for faster navigation
 
         final userId = currentUser.value!.id;
         final myProjects = projectsCtrl.byAssigneeId(userId);

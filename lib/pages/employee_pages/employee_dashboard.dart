@@ -323,9 +323,7 @@ class _AdminDashboardPageState extends State<EmployeeDashboard> {
                                 description: proj.description,
                               ),
                             ),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              curve: Curves.easeOut,
+                            child: Container(
                               margin: const EdgeInsets.only(bottom: 6),
                               padding: const EdgeInsets.symmetric(
                                 vertical: 10,

@@ -35,7 +35,7 @@ class _EmployeeProjectsPageState extends State<EmployeeProjectsPage> {
       await projectsCtrl.refreshProjects();
 
       // Small delay to ensure hydration completes (race condition fix)
-      await Future.delayed(const Duration(milliseconds: 300));
+      // Removed delay for faster loading
 
       if (!mounted) return;
 

@@ -205,7 +205,7 @@ class ExcelExportService {
     print('✓ Project Details sheet created with styling');
   }
 
-  /// Create Checkpoint Reviews sheets (one per phase: Phase 1, 2, 3)
+  /// Create Checkpoint Reviews sheets (one per phase - supports any number of phases)
   Future<void> _createCheckpointReviewsSheet(
     Excel excel,
     String projectId,
@@ -214,15 +214,12 @@ class ExcelExportService {
   ) async {
     print('📝 Creating Checkpoint Reviews sheets...');
 
-    // Filter to Phase 1, 2, 3 only (skip Phase 4)
+    // Include all stages that contain 'phase' in their name (supports unlimited phases)
     final phaseStages = stages.where((s) {
       final stageName = (s['stage_name'] ?? s['name'] ?? '')
           .toString()
           .toLowerCase();
-      return stageName.contains('phase') &&
-          (stageName.contains('1') ||
-              stageName.contains('2') ||
-              stageName.contains('3'));
+      return stageName.contains('phase');
     }).toList();
 
     // Process each phase

@@ -22,6 +22,9 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.grey[50],
         useMaterial3: false,
       ),
+      // Disable all GetX default animations
+      defaultTransition: Transition.noTransition,
+      transitionDuration: Duration.zero,
       initialBinding: AppBindings(),
       // Pick initial screen based on restored auth state (reactive)F
       home: _HomeRouter(),

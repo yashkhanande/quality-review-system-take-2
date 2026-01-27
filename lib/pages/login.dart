@@ -34,7 +34,8 @@ class LoginController extends GetxController {
 
       // Preload projects for employees after navigation (non-blocking)
       if (!isAdmin) {
-        Future.delayed(const Duration(milliseconds: 100), () {
+        // Instant focus
+        WidgetsBinding.instance.addPostFrameCallback((_) {
           auth.preloadEmployeeProjects();
         });
       }

@@ -57,7 +57,7 @@ class _MyprojectState extends State<Myproject> {
         await ctrl.refreshProjects();
 
         // Small delay to ensure hydration completes (race condition fix)
-        await Future.delayed(const Duration(milliseconds: 300));
+        // Removed delay for faster loading
       } else {
         print('[MyProjects] Using preloaded projects (already hydrated)');
       }
@@ -446,11 +446,7 @@ class _MyprojectState extends State<Myproject> {
                                             project: project,
                                           ),
                                         ),
-                                        child: AnimatedContainer(
-                                          duration: const Duration(
-                                            milliseconds: 150,
-                                          ),
-                                          curve: Curves.easeOut,
+                                        child: Container(
                                           margin: const EdgeInsets.only(
                                             bottom: 6,
                                           ),

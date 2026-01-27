@@ -1,12 +1,9 @@
-import 'dart:io' as io;
 import 'dart:typed_data';
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../services/excel_export_service.dart';
 import '../services/master_excel_export_service.dart';
-
-// Conditional web imports
-import 'dart:html' as html;
 
 class ExportController extends GetxController {
   final ExcelExportService excelExportService;
@@ -46,19 +43,13 @@ class ExportController extends GetxController {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final filename = '${projectName}_Export_$timestamp.xlsx';
 
-      // Try web download first
-      try {
-        _downloadFileWeb(excelBytes, filename);
-        print('✓ Web download initiated: $filename');
-      } catch (webError) {
-        print('⚠️ Web download failed, trying native...');
-        await _downloadFileNative(excelBytes, filename);
-      }
+      // Web-only download
+      _downloadFileWeb(excelBytes, filename);
 
       Get.snackbar(
         'Success',
         'Excel file exported successfully!\n$filename',
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 2),
       );
 
       isExporting.value = false;
@@ -70,7 +61,7 @@ class ExportController extends GetxController {
       Get.snackbar(
         'Export Failed',
         'Error: $e',
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 2),
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
@@ -94,19 +85,13 @@ class ExportController extends GetxController {
       final filename =
           'master_export_${timestamp}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
 
-      // Try web download first
-      try {
-        _downloadFileWeb(Uint8List.fromList(fileBytes), filename);
-        print('✓ Web download initiated: $filename');
-      } catch (webError) {
-        print('⚠️ Web download failed, trying native...');
-        await _downloadFileNative(Uint8List.fromList(fileBytes), filename);
-      }
+      // Web-only download
+      _downloadFileWeb(Uint8List.fromList(fileBytes), filename);
 
       Get.snackbar(
         'Success',
         'Master Excel exported successfully!\n$filename',
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 2),
       );
 
       isExporting.value = false;
@@ -118,7 +103,7 @@ class ExportController extends GetxController {
       Get.snackbar(
         'Master Export Failed',
         'Error: $e',
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 2),
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
@@ -149,47 +134,5 @@ class ExportController extends GetxController {
       print('❌ Web download error: $e');
       throw Exception('Web download failed: $e');
     }
-  }
-
-  /// Download file on native platform
-  Future<void> _downloadFileNative(Uint8List bytes, String filename) async {
-    try {
-      // For desktop platforms
-      final downloadsPath = _getDownloadsPath();
-      final downloadDir = io.Directory(downloadsPath);
-
-      // Create directory if it doesn't exist
-      if (!await downloadDir.exists()) {
-        await downloadDir.create(recursive: true);
-      }
-
-      final filepath = '$downloadsPath${io.Platform.pathSeparator}$filename';
-      final file = io.File(filepath);
-      await file.writeAsBytes(bytes);
-
-      print('✓ Excel file saved to: $filepath');
-    } catch (e) {
-      print('❌ Native download error: $e');
-      throw Exception('Native download failed: $e');
-    }
-  }
-
-  /// Get Downloads folder path
-  String _getDownloadsPath() {
-    try {
-      if (io.Platform.isWindows) {
-        final userProfile = io.Platform.environment['USERPROFILE'] ?? '';
-        return '$userProfile\\Downloads';
-      } else if (io.Platform.isMacOS) {
-        final home = io.Platform.environment['HOME'] ?? '';
-        return '$home/Downloads';
-      } else if (io.Platform.isLinux) {
-        final home = io.Platform.environment['HOME'] ?? '';
-        return '$home/Downloads';
-      }
-    } catch (e) {
-      print('⚠️ Platform check failed: $e');
-    }
-    return '/tmp';
   }
 }

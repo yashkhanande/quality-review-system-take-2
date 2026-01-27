@@ -7,7 +7,7 @@ Future<T?> showAdminDialog<T>(
   required Widget child,
   double width = 520,
   bool barrierDismissible = true,
-  Duration transitionDuration = const Duration(milliseconds: 250),
+  Duration transitionDuration = Duration.zero,
   Color barrierColor = Colors.black54,
   String barrierLabel = 'Admin Dialog',
 }) {
@@ -19,69 +19,62 @@ Future<T?> showAdminDialog<T>(
     transitionDuration: transitionDuration,
     pageBuilder: (_, __, ___) => const SizedBox.shrink(),
     transitionBuilder: (context, animation, secondary, childWidget) {
-      return ScaleTransition(
-        scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
-        child: Center(
-          child: Shortcuts(
-            shortcuts: <LogicalKeySet, Intent>{
-              LogicalKeySet(LogicalKeyboardKey.escape): const DismissIntent(),
+      return Center(
+        child: Shortcuts(
+          shortcuts: <LogicalKeySet, Intent>{
+            LogicalKeySet(LogicalKeyboardKey.escape): const DismissIntent(),
+          },
+          child: Actions(
+            actions: <Type, Action<Intent>>{
+              DismissIntent: CallbackAction<DismissIntent>(
+                onInvoke: (intent) {
+                  Navigator.of(context).maybePop();
+                  return null;
+                },
+              ),
             },
-            child: Actions(
-              actions: <Type, Action<Intent>>{
-                DismissIntent: CallbackAction<DismissIntent>(
-                  onInvoke: (intent) {
-                    Navigator.of(context).maybePop();
-                    return null;
-                  },
-                ),
-              },
-              child: Focus(
-                autofocus: true,
-                child: Material(
-                  color: Colors.transparent,
-                  child: Container(
-                    width: width,
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 16,
-                          offset: Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                              ),
+            child: Focus(
+              autofocus: true,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: width,
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 16,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
                             ),
-                            IconButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              icon: const Icon(Icons.close),
-                              tooltip: 'Close dialog',
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Flexible(
-                          child: SingleChildScrollView(
-                            child: child,
                           ),
-                        ),
-                      ],
-                    ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close),
+                            tooltip: 'Close dialog',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(child: SingleChildScrollView(child: child)),
+                    ],
                   ),
                 ),
               ),

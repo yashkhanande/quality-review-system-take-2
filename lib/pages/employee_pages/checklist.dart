@@ -164,6 +164,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   int _selectedPhase = 1; // Currently selected phase (1 = first phase)
   int _activePhase = 1; // Active phase index (enabled for editing)
   int _maxActualPhase = 7; // Max phase number discovered from stages
+  bool _isProjectCompleted = false; // Track if all phases are completed
   List<Map<String, dynamic>> _stages = []; // Store stages with names
   Map<String, dynamic> _stageMap = {}; // Map stageKey to stage data
   Map<String, dynamic>? _approvalStatus;
@@ -199,12 +200,9 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   @override
   void initState() {
     super.initState();
-    print('🔷 QuestionsScreen.initState() for project: ${widget.projectId}');
     checklistCtrl = Get.isRegistered<ChecklistController>()
         ? Get.find<ChecklistController>()
         : Get.put(ChecklistController());
-
-    print('✓ ChecklistController obtained: ${checklistCtrl.runtimeType}');
 
     if (widget.initialPhase != null &&
         widget.initialPhase! >= 1 &&
@@ -219,25 +217,15 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 
   Map<String, dynamic>? _getCategoryInfo(String? categoryId) {
     if (categoryId == null || categoryId.isEmpty) {
-      debugPrint('🔹 _getCategoryInfo: categoryId is null or empty');
       return null;
     }
     final cat = _defectCategories[categoryId];
     if (cat == null) {
-      debugPrint(
-        '🔹 _getCategoryInfo: Category not found for ID: $categoryId. Available IDs: ${_defectCategories.keys.toList()}',
-      );
       return null;
     }
     if ((cat['name'] ?? '').isEmpty) {
-      debugPrint(
-        '🔹 _getCategoryInfo: Category missing name for ID: $categoryId, cat: $cat',
-      );
       return null;
     }
-    debugPrint(
-      '✓ _getCategoryInfo: Found category for ID: $categoryId, cat: $cat',
-    );
     return cat;
   }
 
@@ -251,10 +239,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     String? severity,
   }) async {
     try {
-      print(
-        '🔄 Assigning defect category: $checkpointId → $categoryId ($severity)',
-      );
-
       // Immediately update local state
       setState(() {
         _selectedDefectCategory[checkpointId] = categoryId;
@@ -266,16 +250,13 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       // Save to backend
       if (categoryId != null && categoryId.isNotEmpty) {
         final checklistService = Get.find<PhaseChecklistService>();
-        print('📡 Saving to backend...');
         await checklistService.assignDefectCategory(
           checkpointId,
           categoryId,
           severity: severity,
         );
-        print('✓ Saved successfully');
       }
     } catch (e) {
-      print('❌ Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -302,10 +283,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     final phase = _selectedPhase;
 
     try {
-      print(
-        '🔍 CHECKLIST PAGE: Loading data for Phase $phase, ProjectID: ${widget.projectId}',
-      );
-
       // Step 0: Load defect categories from template
       try {
         final templateService = Get.find<TemplateService>();
@@ -317,20 +294,17 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
             final id = (cat['_id'] ?? '').toString();
             if (id.isNotEmpty) {
               _defectCategories[id] = cat;
-              print('  📂 Category loaded: ID="$id", name="${cat['name']}"');
             }
           }
         }
-        print('✓ Defect categories loaded: ${_defectCategories.length}');
       } catch (e) {
-        print('⚠️ Failed to load defect categories: $e');
+        // Silently handle defect category loading errors
       }
 
       // Step 1: Fetch stages
       final stageService = Get.find<StageService>();
 
       final stages = await stageService.listStages(widget.projectId);
-      print('✓ Stages fetched: ${stages.length} stages found');
 
       // Build stage map and discover maximum actual phase number
       int discoveredMaxActual = 1;
@@ -339,7 +313,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         final name = (s['stage_name'] ?? '').toString();
         final stageKey = (s['stage_key'] ?? '').toString();
         stageMap[stageKey] = {'name': name, ...s};
-        print('  📍 Stage: $stageKey => $name');
 
         // Extract phase number from stage_key (e.g., "stage1" => 1, "stage2" => 2)
         // This is reliable because stage_key is always in format "stageN"
@@ -360,7 +333,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       });
 
       if (stages.isEmpty) {
-        print('❌ No stages found');
         if (!mounted) return;
         setState(() {
           checklist = [];
@@ -377,17 +349,10 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       final expectedStageKey = 'stage$phase';
       final stage = stages.firstWhereOrNull((s) {
         final stageKey = (s['stage_key'] ?? '').toString().toLowerCase();
-        print(
-          '  Checking stage: "$stageKey" for expected key: "$expectedStageKey"',
-        );
         return stageKey == expectedStageKey;
       });
 
       if (stage == null) {
-        print('❌ No stage found with stage_key "$expectedStageKey"');
-        print(
-          '   Available stages: ${stages.map((s) => s['stage_key']).join(", ")}',
-        );
         if (!mounted) return;
         setState(() {
           checklist = [];
@@ -411,11 +376,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         setState(() {
           _loopbackCounter = loopbackCount;
         });
-        print(
-          '✓ Stage found: $stageId, Loopback Count: $loopbackCount (from API)',
-        );
       } catch (e) {
-        print('⚠️ Error loading loopback counter: $e, defaulting to 0');
         setState(() {
           _loopbackCounter = 0;
         });
@@ -431,15 +392,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         final groups = projectChecklistData['groups'] as List<dynamic>? ?? [];
         if (groups.isNotEmpty) {
           loadedChecklist = Question.fromProjectChecklistGroups(groups);
-          print(
-            '✓ Loaded ${loadedChecklist.length} groups from ProjectChecklist (hierarchical structure)',
-          );
         }
-      } catch (e) {
-        print(
-          '⚠️ ProjectChecklist not available, falling back to old structure: $e',
-        );
-      }
+      } catch (e) {}
 
       // Step 4: Fallback to old checklist structure if needed
       if (loadedChecklist.isEmpty) {
@@ -448,12 +402,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           final checklistService = Get.find<PhaseChecklistService>();
           final res = await checklistService.listForStage(stageId);
           checklists = List<Map<String, dynamic>>.from(res as List);
-          print(
-            '✓ Checklists fetched: ${checklists.length} checklists found (old structure)',
-          );
         } catch (e) {
           final msg = e.toString();
-          print('❌ Error fetching checklists: $msg');
           if (!mounted) return;
           setState(() {
             checklist = [];
@@ -473,7 +423,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         }
 
         if (checklists.isEmpty) {
-          print('❌ No checklists returned for this stage');
           // As a last fallback, mirror admin template for this phase
           try {
             final templateService = Get.find<TemplateService>();
@@ -481,17 +430,11 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
             final stageKey = 'stage$phase';
             final stageData = template[stageKey];
             if (stageData is List && stageData.isNotEmpty) {
-              print('↩️ Building checklist from admin template "$stageKey"');
               loadedChecklist = _questionsFromTemplateStage(stageData);
             } else if (stageData is Map && stageData.isNotEmpty) {
-              print(
-                '↩️ Building checklist from admin template map "$stageKey"',
-              );
               loadedChecklist = _questionsFromTemplateStage([stageData]);
             }
-          } catch (e) {
-            print('⚠️ Template fallback failed: $e');
-          }
+          } catch (e) {}
 
           if (loadedChecklist.isEmpty) {
             if (!mounted) return;
@@ -510,26 +453,10 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         for (final cl in checklists) {
           final checklistId = (cl['_id'] ?? '').toString();
           final checklistName = (cl['checklist_name'] ?? '').toString();
-          print('  Processing checklist: $checklistName');
 
           final checkpoints = await checklistService.getCheckpoints(
             checklistId,
           );
-          print('    Checkpoints: ${checkpoints.length}');
-
-          // Debug: Print first checkpoint structure to verify defect data
-          if (checkpoints.isNotEmpty) {
-            final firstCp = checkpoints.first;
-            print('    📋 First checkpoint structure:');
-            print('      _id: ${firstCp['_id']}');
-            print('      question: ${firstCp['question']}');
-            print('      defect: ${firstCp['defect']}');
-            if (firstCp['defect'] is Map) {
-              print('        - categoryId: ${firstCp['defect']['categoryId']}');
-              print('        - severity: ${firstCp['defect']['severity']}');
-              print('        - isDetected: ${firstCp['defect']['isDetected']}');
-            }
-          }
 
           final cpObjs = checkpoints
               .map((cp) {
@@ -546,9 +473,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                   _selectedDefectSeverity[cpId] = defectSeverity.isNotEmpty
                       ? defectSeverity
                       : null;
-                  print(
-                    '✓ Loaded defect: $cpId → $defectCatId ($defectSeverity)',
-                  );
                 }
 
                 return {
@@ -560,11 +484,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
               .where((m) => (m['text'] ?? '').isNotEmpty)
               .cast<Map<String, String>>()
               .toList();
-
-          print('    📝 Created ${cpObjs.length} question objects:');
-          cpObjs.forEach((obj) {
-            print('       • id=${obj['id']} | text=${obj['text']}');
-          });
 
           if (cpObjs.isNotEmpty) {
             loadedChecklist.add(
@@ -586,16 +505,11 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           final stageKey = 'stage$phase';
           final stageData = template[stageKey];
           if (stageData is List && stageData.isNotEmpty) {
-            print(
-              '↩️ No questions from project checklists; mirroring admin template $stageKey',
-            );
             loadedChecklist = _questionsFromTemplateStage(stageData);
           } else if (stageData is Map && stageData.isNotEmpty) {
             loadedChecklist = _questionsFromTemplateStage([stageData]);
           }
-        } catch (e) {
-          print('⚠️ Final template fallback failed: $e');
-        }
+        } catch (e) {}
       }
 
       // Use the loaded checklist (either from ProjectChecklist or old structure)
@@ -603,11 +517,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       setState(() {
         checklist = loadedChecklist;
       });
-      print(
-        '✅ Checklist loaded successfully: ${loadedChecklist.length} questions',
-      );
     } catch (e) {
-      print('❌ Error loading checklist: $e');
       if (!mounted) return;
       setState(() {
         checklist = [];
@@ -643,14 +553,9 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         if (mounted) {
           setState(() {
             _revertCount = revertCountFromDb;
-            debugPrint(
-              '✓ Revert count loaded from DB: $_revertCount for phase $phase',
-            );
           });
         }
-      } catch (e) {
-        debugPrint('⚠️ Error loading revert count: $e');
-      }
+      } catch (e) {}
 
       final executorSheet = checklistCtrl.getRoleSheet(
         widget.projectId,
@@ -665,12 +570,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       // Extract persisted reviewer summary (if any) from the answers map
       Map<String, dynamic>? persistedReviewerSummary;
       final metaSummary = reviewerSheet[_reviewerSummaryKey];
-      print('🔍 Looking for reviewer summary in phase $phase...');
-      print('   Meta summary found: ${metaSummary != null}');
       if (metaSummary != null) {
-        print('   Meta summary type: ${metaSummary.runtimeType}');
-        print('   Meta summary content: $metaSummary');
-
         // Extract the actual summary data from the meta answer structure
         if (metaSummary is Map<String, dynamic>) {
           // First check if there's a metadata field (from backend)
@@ -682,9 +582,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
               persistedReviewerSummary = Map<String, dynamic>.from(
                 metadata['_summaryData'] as Map<String, dynamic>,
               );
-              print(
-                '✅ Extracted summary from metadata._summaryData: $persistedReviewerSummary',
-              );
             }
           }
           // Fallback: check direct _summaryData field (old structure)
@@ -693,15 +590,9 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
             persistedReviewerSummary = Map<String, dynamic>.from(
               metaSummary['_summaryData'] as Map<String, dynamic>,
             );
-            print(
-              '✅ Extracted summary from _summaryData: $persistedReviewerSummary',
-            );
           } else {
             // Last fallback: try to use the whole object
             persistedReviewerSummary = Map<String, dynamic>.from(metaSummary);
-            print(
-              '✅ Using whole meta object as summary: $persistedReviewerSummary',
-            );
           }
         }
       }
@@ -717,13 +608,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         if (persistedReviewerSummary != null) {
           _reviewerSubmissionSummaries[_selectedPhase] =
               persistedReviewerSummary;
-          print(
-            '✅ Reviewer summary SET for phase $_selectedPhase: $persistedReviewerSummary',
-          );
-        } else {
-          print('⚠️ No reviewer summary to set for phase $_selectedPhase');
         }
-        print('📊 Current summaries map: $_reviewerSubmissionSummaries');
       });
       // Recompute defect counts after loading answers
       _recomputeDefects();
@@ -735,23 +620,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     setState(() {
       _isLoadingData = false;
     });
-
-    // DEBUG: Print current state of defect maps
-    print('');
-    print('═══════════════════════════════════════════════════════════════');
-    print('🔍 DEBUG: Defect Category & Severity Maps After Loading');
-    print('═══════════════════════════════════════════════════════════════');
-    print(
-      '📍 Total checkpoints with categories: ${_selectedDefectCategory.length}',
-    );
-    _selectedDefectCategory.forEach((checkpointId, categoryId) {
-      final severity = _selectedDefectSeverity[checkpointId] ?? 'N/A';
-      print(
-        '   • Checkpoint: $checkpointId | Category: $categoryId | Severity: $severity',
-      );
-    });
-    print('═══════════════════════════════════════════════════════════════');
-    print('');
 
     // Compute active phase
     await _computeActivePhase();
@@ -775,21 +643,16 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           reviewerExpanded.add(idx);
           _highlightSubs.add(key);
         });
-        // Try to scroll to approximate position
-        await Future.delayed(const Duration(milliseconds: 100));
+        // Scroll to position instantly
         final offset = (idx * 140).toDouble();
         if (_executorScroll.hasClients) {
-          _executorScroll.animateTo(
-            offset,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
+          _executorScroll.jumpTo(
+            offset.clamp(0, _executorScroll.position.maxScrollExtent),
           );
         }
         if (_reviewerScroll.hasClients) {
-          _reviewerScroll.animateTo(
-            offset,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
+          _reviewerScroll.jumpTo(
+            offset.clamp(0, _reviewerScroll.position.maxScrollExtent),
           );
         }
         // Clear highlight after a short delay
@@ -874,16 +737,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 
   void _recomputeDefects() {
     // Compute defects locally from current answers - much simpler and more reliable
-    print('🔍 Starting defect computation...');
-    print('📝 Executor answers: ${executorAnswers.length} entries');
-    print('📝 Reviewer answers: ${reviewerAnswers.length} entries');
-    if (executorAnswers.isNotEmpty) {
-      print('   Sample executor key: ${executorAnswers.keys.first}');
-    }
-    if (reviewerAnswers.isNotEmpty) {
-      print('   Sample reviewer key: ${reviewerAnswers.keys.first}');
-    }
-
     final counts = <String, int>{};
     final checkpointCounts = <String, int>{};
     int total = 0;
@@ -895,8 +748,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       final subs = q.subQuestions;
       final checkpointCount = subs.length;
 
-      print('🔍 Checking "${q.mainQuestion}" - ${subs.length} questions');
-
       for (final sub in subs) {
         final textKey = (sub['text'] ?? '').toString();
         final idKey = (sub['id'] ?? '').toString();
@@ -905,27 +756,16 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         var execAnswer = executorAnswers[textKey]?['answer'];
         var reviAnswer = reviewerAnswers[textKey]?['answer'];
 
-        String usedKey = textKey;
         if (execAnswer == null && idKey.isNotEmpty) {
           execAnswer = executorAnswers[idKey]?['answer'];
           reviAnswer = reviewerAnswers[idKey]?['answer'];
-          usedKey = idKey;
         }
-
-        print(
-          '  Q: "${textKey.length > 50 ? '${textKey.substring(0, 50)}...' : textKey}"',
-        );
-        print(
-          '    Key used: "${usedKey.length > 30 ? '${usedKey.substring(0, 30)}...' : usedKey}"',
-        );
-        print('    Exec=$execAnswer, Revi=$reviAnswer');
 
         // Count as defect only if both have answered and answers differ
         if (execAnswer != null &&
             reviAnswer != null &&
             execAnswer != reviAnswer) {
           defectCount++;
-          print('    🔴 DEFECT!');
         }
       }
 
@@ -933,8 +773,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       checkpointCounts[checklistId] = checkpointCount;
       total += defectCount;
       totalCheckpoints += checkpointCount;
-
-      print('  ✓ Defects for this checklist: $defectCount/$checkpointCount');
     }
 
     if (mounted) {
@@ -953,15 +791,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           _maxDefectsSeenInSession = total;
         }
         _totalCheckpointsInSession = totalCheckpoints;
-        debugPrint(
-          '📊 Defects recomputed: current=$total, max_in_session=$_maxDefectsSeenInSession, total_checkpoints=$totalCheckpoints',
-        );
       });
     }
-
-    print(
-      '📊 TOTAL DEFECTS: $total out of $totalCheckpoints questions = ${totalCheckpoints > 0 ? (total / totalCheckpoints * 100).toStringAsFixed(2) : "0.00"}%',
-    );
   }
 
   /// Accumulate maximum defects from this session into cumulative defect rate
@@ -975,39 +806,41 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       _cumulativeDefectRate += sessionDefectRate;
       _cumulativeDefectCount += _maxDefectsSeenInSession;
 
-      debugPrint(
-        '✅ Defects accumulated from session: max_defects=$_maxDefectsSeenInSession, session_rate=$sessionDefectRate%, total_checkpoints=$_totalCheckpointsInSession, cumulative_rate=${_cumulativeDefectRate.toStringAsFixed(2)}%',
-      );
-
       // Reset session tracking for next submission
       _maxDefectsSeenInSession = 0;
       _totalCheckpointsInSession = 0;
-    } else {
-      debugPrint(
-        '⚠️ No defects to accumulate in this session. max_in_session=$_maxDefectsSeenInSession, total_checkpoints=$_totalCheckpointsInSession',
-      );
     }
   }
 
   Future<void> _computeActivePhase() async {
     int active = 1;
+    bool allPhasesCompleted = false;
     try {
-      final st1 = await _approvalService.getStatus(widget.projectId, 1);
-      if (st1 != null && st1['status'] == 'approved') {
-        active = 2;
-        final st2 = await _approvalService.getStatus(widget.projectId, 2);
-        if (st2 != null && st2['status'] == 'approved') {
-          active = 3;
-          final st3 = await _approvalService.getStatus(widget.projectId, 3);
-          if (st3 != null && st3['status'] == 'approved') {
-            // Phase 3 approved - project is completed
-            active = 4;
-          }
+      // Dynamically check all phases based on _maxActualPhase
+      for (int phase = 1; phase <= _maxActualPhase; phase++) {
+        final status = await _approvalService.getStatus(
+          widget.projectId,
+          phase,
+        );
+
+        if (status != null && status['status'] == 'approved') {
+          // If this phase is approved, the next phase becomes active
+          active = phase + 1;
+        } else {
+          // If this phase is not approved, stop checking
+          break;
         }
+      }
+
+      // If active phase exceeds max phase, all phases are completed
+      if (active > _maxActualPhase) {
+        allPhasesCompleted = true;
+        active = _maxActualPhase; // Stay on last phase
       }
     } catch (_) {}
     if (!mounted) return;
     setState(() {
+      _isProjectCompleted = allPhasesCompleted;
       // active represents the next phase that's now active
       // active = 1 means phase 1 is active, active = 2 means phase 2 is active, etc.
       _activePhase = active;
@@ -1065,7 +898,9 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
             .contains(currentUserName.trim().toLowerCase());
 
     // Editing only allowed on active phase; older phases view-only for all
-    final phaseEditable = _selectedPhase == _activePhase;
+    // If project is completed, all phases are view-only
+    final phaseEditable =
+        _selectedPhase == _activePhase && !_isProjectCompleted;
 
     // Check if executor checklist for this phase has been submitted
     final executorSubmitted =
@@ -1110,25 +945,44 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
               onPressed: (reviewerSubmitted && !phaseAlreadyApproved)
                   ? () async {
                       try {
+                        final approvedPhase = _selectedPhase;
+
                         await _approvalService.approve(
                           widget.projectId,
-                          _selectedPhase,
+                          approvedPhase,
                         );
 
                         checklistCtrl.clearProjectCache(widget.projectId);
+
+                        // Wait for backend to process
+                        await Future.delayed(const Duration(milliseconds: 300));
+
+                        // Recompute active phase
                         await _computeActivePhase();
 
+                        // Switch to the newly activated phase if available
+                        if (mounted &&
+                            !_isProjectCompleted &&
+                            _activePhase <= _maxActualPhase) {
+                          setState(() {
+                            _selectedPhase = _activePhase;
+                          });
+                        }
+
                         if (mounted) {
+                          final message = _isProjectCompleted
+                              ? 'Phase $approvedPhase approved! Project is now completed. All phases are in view-only mode.'
+                              : 'Phase $approvedPhase approved! Phase $_activePhase is now active.';
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text(
-                                'Phase ${_selectedPhase} approved! Next phase is now active.',
-                              ),
+                              content: Text(message),
                               backgroundColor: Colors.green,
+                              duration: const Duration(seconds: 4),
                             ),
                           );
                         }
 
+                        // Reload checklist data for the new active phase
                         await _loadChecklistData();
                       } catch (e) {
                         if (mounted) {
@@ -1181,7 +1035,16 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                         );
 
                         checklistCtrl.clearProjectCache(widget.projectId);
+
+                        // Recompute active phase
                         await _computeActivePhase();
+
+                        // Force UI update
+                        if (mounted) {
+                          setState(() {
+                            // UI will rebuild with updated state
+                          });
+                        }
 
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1277,7 +1140,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                                 style: TextStyle(fontSize: 10),
                               ),
                             )
-                          else if (p == _activePhase)
+                          else if (p == _activePhase && !_isProjectCompleted)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 6,
@@ -1289,6 +1152,21 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                               ),
                               child: const Text(
                                 'Active',
+                                style: TextStyle(fontSize: 10),
+                              ),
+                            )
+                          else if (_isProjectCompleted && p <= _maxActualPhase)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade200,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Text(
+                                'Completed',
                                 style: TextStyle(fontSize: 10),
                               ),
                             )
@@ -1339,7 +1217,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
             onPressed: _isLoadingData
                 ? null
                 : () {
-                    print('🔄 Manual refresh triggered');
                     // Clear cache and reload
                     checklistCtrl.clearProjectCache(widget.projectId);
                     _loadChecklistData();
@@ -1397,6 +1274,38 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                       child: ApprovalBanner(
                         approvalStatus: _approvalStatus,
                         compareStatus: _compareStatus,
+                      ),
+                    ),
+                  if (_isProjectCompleted)
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Material(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.check_circle,
+                                color: Colors.blue.shade700,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '🎉 Project Completed! All phases have been reviewed and approved. All phases are now in view-only mode.',
+                                  style: TextStyle(
+                                    color: Colors.blue.shade900,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   if (isSDH)
@@ -1642,8 +1551,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                             if (summaryData == null) return; // User cancelled
 
                             // Persist reviewer summary as a meta-answer so SDH can view later
-                            print('💾 Saving reviewer summary: $summaryData');
-
                             // First update the local cache
                             setState(() {
                               _reviewerSubmissionSummaries[_selectedPhase] =
@@ -1678,9 +1585,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                             await Future.delayed(
                               const Duration(milliseconds: 600),
                             );
-                            print(
-                              '✅ Reviewer summary saved to cache and backend',
-                            );
 
                             final success = await checklistCtrl.submitChecklist(
                               widget.projectId,
@@ -1688,9 +1592,6 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                               'reviewer',
                             );
                             if (success && mounted) {
-                              print(
-                                '✅ Checklist submitted. Summary in map: ${_reviewerSubmissionSummaries[_selectedPhase]}',
-                              );
                               setState(() {});
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -2386,17 +2287,6 @@ class _RoleColumn extends StatelessWidget {
                                   final sectionName = sub['sectionName'];
 
                                   // DEBUG: Log the key and category lookup
-                                  final catFromMap =
-                                      selectedDefectCategory[key];
-                                  final sevFromMap =
-                                      selectedDefectSeverity[key];
-                                  if (catFromMap != null ||
-                                      sevFromMap != null) {
-                                    print(
-                                      '🎯 Building SubQuestionCard: key=$key | category=$catFromMap | severity=$sevFromMap | role=$role',
-                                    );
-                                  }
-
                                   final widgets = <Widget>[];
 
                                   // Add section header if section changed
@@ -3103,7 +2993,7 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
         await _updateAnswer();
       }
     } catch (e) {
-      debugPrint('pick images error: $e');
+      // Silently handle image picker errors
     }
   }
 

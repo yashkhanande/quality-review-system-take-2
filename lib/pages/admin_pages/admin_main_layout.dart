@@ -66,14 +66,7 @@ class AdminMainLayout extends StatelessWidget {
           ),
 
           // Main Content (right)
-          Expanded(
-            child: Obx(
-              () => AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: pages[_selectedIndex.value],
-              ),
-            ),
-          ),
+          Expanded(child: Obx(() => pages[_selectedIndex.value])),
         ],
       ),
     );
