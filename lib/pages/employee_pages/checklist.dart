@@ -127,9 +127,6 @@ class Question {
   }
 }
 
-
-
-
 class _AddCheckpointRow extends StatefulWidget {
   final String? checklistId;
   final Future<void> Function()? onAdded;
@@ -292,6 +289,7 @@ class RoleColumn extends StatelessWidget {
   final Function(String, Map<String, dynamic>) onAnswer;
   final Future<void> Function() onSubmit;
   final Future<void> Function()? onRevert; // New: revert callback for reviewer
+  final bool isCurrentUserReviewer; // Check if logged-in user is a reviewer
   final Map<String, int>? defectsByChecklist;
   final Map<String, int>? checkpointsByChecklist;
   final bool showDefects;
@@ -320,6 +318,7 @@ class RoleColumn extends StatelessWidget {
     required this.onAnswer,
     required this.onSubmit,
     this.onRevert,
+    this.isCurrentUserReviewer = false,
     this.editMode = false,
     this.onRefresh,
     this.defectsByChecklist,
@@ -378,6 +377,7 @@ class RoleColumn extends StatelessWidget {
             phase: phase,
             onSubmit: onSubmit,
             onRevert: onRevert,
+            isCurrentUserReviewer: isCurrentUserReviewer,
             submissionInfo: checklistCtrl.submissionInfo(
               projectId,
               phase,
@@ -1074,9 +1074,15 @@ class ApprovalBanner extends StatelessWidget {
     final match = compareStatus?['match'] == true;
     String text = 'Approval: $status';
     Color bg = Colors.grey.shade200;
+
     if (status == 'pending') bg = Colors.amber.shade100;
     if (status == 'approved') bg = Colors.green.shade100;
     if (status == 'reverted') bg = Colors.red.shade100;
+    if (status == 'reverted_to_executor') {
+      bg = Colors.orange.shade100;
+      text = 'Reverted to Executor - Waiting for executor to resubmit';
+    }
+
     final cmp = match ? 'Answers match' : 'Answers differ';
     return Container(
       width: double.infinity,
@@ -1102,6 +1108,7 @@ class _SubmitBar extends StatelessWidget {
   final int phase;
   final Future<void> Function() onSubmit;
   final Future<void> Function()? onRevert; // New: revert callback for reviewer
+  final bool isCurrentUserReviewer; // Check if logged-in user is a reviewer
   final Map<String, dynamic>? submissionInfo;
   final Map<String, dynamic>?
   executorSubmissionInfo; // New: to check if executor submitted
@@ -1113,6 +1120,7 @@ class _SubmitBar extends StatelessWidget {
     required this.phase,
     required this.onSubmit,
     this.onRevert,
+    this.isCurrentUserReviewer = false,
     required this.submissionInfo,
     this.executorSubmissionInfo,
     this.canEdit = true,
@@ -1130,8 +1138,17 @@ class _SubmitBar extends StatelessWidget {
 
     // Check if executor has submitted (for reviewer to enable revert)
     final executorSubmitted = executorSubmissionInfo?['is_submitted'] == true;
+
+    // Show revert button when:
+    // 1. Role is reviewer
+    // 2. Current logged-in user is actually a reviewer (not an executor viewing the reviewer section)
+    // 3. Reviewer hasn't submitted yet (can still make changes)
+    // 4. Executor has submitted (there's work to review)
+    // 5. onRevert callback is provided
+    // This allows reviewer to send work back to executor for corrections
     final showRevertButton =
         role == 'reviewer' &&
+        isCurrentUserReviewer &&
         !submitted &&
         executorSubmitted &&
         onRevert != null;
@@ -1649,8 +1666,7 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
       });
       return;
     }
-    setState(() {
-    });
+    setState(() {});
     try {
       final svc = Get.find<DefectCategorizationService>();
       final checkpointId = widget.checkpointId ?? 'dummy';
@@ -1664,6 +1680,7 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
       });
     }
   }
+
   void _computeLocalSuggestions(String remark) {
     final text = remark.trim();
     if (text.length < 2 || widget.availableCategories.isEmpty) {
@@ -1722,7 +1739,6 @@ class _SubQuestionCardState extends State<SubQuestionCard> {
       (a, b) =>
           (a['categoryName'] as String).compareTo(b['categoryName'] as String),
     );
-    setState(() {
-    });
+    setState(() {});
   }
 }

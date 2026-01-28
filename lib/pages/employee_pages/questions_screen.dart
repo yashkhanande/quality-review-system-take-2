@@ -146,6 +146,9 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     }
   }
 
+  /// Handle reviewer reverting the phase back to executor
+  /// This allows the executor to re-fill the checklist if the reviewer is not satisfied
+  /// The cycle continues until the reviewer is satisfied and approves
   Future<void> _handleReviewerRevert() async {
     // Check if current user is a reviewer
     String? currentUserName;
@@ -168,7 +171,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         title: const Text('Revert to Executor'),
         content: const Text(
           'Are you sure you want to send this phase back to the executor? '
-          'The executor will need to review and resubmit their work.',
+          'The executor will need to review and resubmit their work. '
+          'This cycle can continue until you are satisfied with the results.',
         ),
         actions: [
           TextButton(
@@ -192,16 +196,22 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     try {
       await _approvalService.revertToExecutor(widget.projectId, _selectedPhase);
 
+      // Clear cache to ensure fresh data is loaded
+      checklistCtrl.clearProjectCache(widget.projectId);
+
+      // Reload checklist data to reflect the revert
+      await _loadChecklistData();
+
       if (mounted) {
+        // Force UI rebuild to show updated submission status
+        setState(() {});
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Phase reverted to executor successfully'),
             backgroundColor: Colors.orange,
           ),
         );
-
-        // Reload checklist data to reflect the revert
-        await _loadChecklistData();
       }
     } catch (e) {
       if (mounted) {
@@ -852,8 +862,13 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 
     // Editing only allowed on active phase; older phases view-only for all
     // If project is completed, all phases are view-only
+    // Special case: if phase is reverted, it becomes editable again
+    final approvalStatus = _approvalStatus?['status'] as String?;
+    final isReverted =
+        approvalStatus == 'reverted' ||
+        approvalStatus == 'reverted_to_executor';
     final phaseEditable =
-        _selectedPhase == _activePhase && !_isProjectCompleted;
+        (_selectedPhase == _activePhase || isReverted) && !_isProjectCompleted;
 
     // Check if executor checklist for this phase has been submitted
     final executorSubmitted =
@@ -874,10 +889,15 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
         true;
 
     // Can edit only if phase is editable AND checklist has not been submitted
+    // Special case: when reverted to executor, only executor can edit (reviewer stays submitted)
     final canEditExecutorPhase =
         canEditExecutor && phaseEditable && !executorSubmitted;
     final canEditReviewerPhase =
-        canEditReviewer && phaseEditable && !reviewerSubmitted;
+        canEditReviewer &&
+        phaseEditable &&
+        !reviewerSubmitted &&
+        approvalStatus !=
+            'reverted_to_executor'; // Reviewer cannot edit when reverted to executor
 
     // Check if current phase is already approved (no more actions allowed)
     final phaseAlreadyApproved = _approvalStatus?['status'] == 'approved';
@@ -1401,6 +1421,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                           getCategoryInfo: _getCategoryInfo,
                           availableCategories: _getAvailableCategories(),
                           onCategoryAssigned: _assignDefectCategory,
+                          isCurrentUserReviewer: canEditReviewer,
                           onExpand: (idx) => setState(
                             () => executorExpanded.contains(idx)
                                 ? executorExpanded.remove(idx)
@@ -1417,6 +1438,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                             );
                             _recomputeDefects();
                           },
+                          onRevert:
+                              null, // Executor should never see the revert button
                           onSubmit: () async {
                             if (!canEditExecutorPhase) return;
                             // Accumulate current defects before submission
@@ -1460,6 +1483,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                           getCategoryInfo: _getCategoryInfo,
                           availableCategories: _getAvailableCategories(),
                           onCategoryAssigned: _assignDefectCategory,
+                          isCurrentUserReviewer: canEditReviewer,
                           onExpand: (idx) => setState(
                             () => reviewerExpanded.contains(idx)
                                 ? reviewerExpanded.remove(idx)
@@ -1476,7 +1500,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                             );
                             _recomputeDefects();
                           },
-                          onRevert: _handleReviewerRevert,
+                          onRevert:
+                              _handleReviewerRevert, // Only reviewer can revert to executor
                           onSubmit: () async {
                             if (!canEditReviewerPhase) return;
                             // Accumulate current defects before submission
