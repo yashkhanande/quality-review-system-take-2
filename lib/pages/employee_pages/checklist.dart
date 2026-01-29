@@ -1138,11 +1138,11 @@ class _SubmitBar extends StatelessWidget {
 
     // Check if executor has submitted (for reviewer to enable revert)
     final executorSubmitted = executorSubmissionInfo?['is_submitted'] == true;
-    // Reviewer can revert to executor when executor submitted but reviewer hasn't
+    // Reviewer can revert to executor when executor submitted
+    // Reviewer can revert even after submitting their own checklist (before phase approval)
     final showRevertButton =
         role == 'reviewer' &&
         isCurrentUserReviewer &&
-        !submitted &&
         executorSubmitted &&
         onRevert != null;
 
@@ -1163,29 +1163,26 @@ class _SubmitBar extends StatelessWidget {
               ],
             )
           else
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: canEdit ? onSubmit : null,
-                  icon: const Icon(Icons.send),
-                  label: Text(
-                    'Submit ${role[0].toUpperCase()}${role.substring(1)} Checklist',
-                  ),
-                ),
-                if (showRevertButton) ...[
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: onRevert,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: const Icon(Icons.undo),
-                    label: const Text('Revert to Executor'),
-                  ),
-                ],
-              ],
+            ElevatedButton.icon(
+              onPressed: canEdit ? onSubmit : null,
+              icon: const Icon(Icons.send),
+              label: Text(
+                'Submit ${role[0].toUpperCase()}${role.substring(1)} Checklist',
+              ),
             ),
+          // Show revert button independently (for reviewer, even after submission)
+          if (showRevertButton) ...[
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: onRevert,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.undo),
+              label: const Text('Revert to Executor'),
+            ),
+          ],
           const Spacer(),
           Text(role.toUpperCase(), style: TextStyle(color: Colors.grey[700])),
         ],
