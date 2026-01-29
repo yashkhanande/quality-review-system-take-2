@@ -115,6 +115,28 @@ class PhaseChecklistService {
     return (json['data'] as Map<String, dynamic>);
   }
 
+  // Update checkpoint response with answers, category, and severity
+  Future<Map<String, dynamic>> updateCheckpointResponse(
+    String checkpointId, {
+    Map<String, dynamic>? executorResponse,
+    Map<String, dynamic>? reviewerResponse,
+    String? categoryId,
+    String? severity,
+  }) async {
+    _ensureToken();
+    final uri = Uri.parse('${ApiConfig.baseUrl}/checkpoints/$checkpointId');
+    final body = <String, dynamic>{};
+
+    if (executorResponse != null) body['executorResponse'] = executorResponse;
+    if (reviewerResponse != null) body['reviewerResponse'] = reviewerResponse;
+    if (categoryId != null && categoryId.isNotEmpty)
+      body['categoryId'] = categoryId;
+    if (severity != null && severity.isNotEmpty) body['severity'] = severity;
+
+    final json = await http.patchJson(uri, body);
+    return (json['data'] as Map<String, dynamic>);
+  }
+
   // Delete a checkpoint
   Future<void> deleteCheckpoint(String checkpointId) async {
     _ensureToken();

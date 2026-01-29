@@ -4,6 +4,7 @@ import 'package:quality_review/pages/employee_pages/employee_project_detail_page
 import '../../models/project.dart';
 import '../../controllers/projects_controller.dart';
 import '../../controllers/team_controller.dart';
+import '../../controllers/export_controller.dart';
 
 class EmployeeDashboard extends StatefulWidget {
   const EmployeeDashboard({super.key});
@@ -19,11 +20,7 @@ class _AdminDashboardPageState extends State<EmployeeDashboard> {
   String _sortKey = 'started';
   bool _ascending = false; // default: newest first
   int? _hoverIndex;
-  final Set<String> _selectedStatuses = {
-    'Not Started',
-    'In Progress',
-    'Completed',
-  };
+  final Set<String> _selectedStatuses = {}; // Start with no filters selected
 
   @override
   void initState() {
@@ -180,7 +177,7 @@ class _AdminDashboardPageState extends State<EmployeeDashboard> {
                 ),
               ),
               const SizedBox(height: 16),
-              // Status filter chips
+              // Status filter chips and Export button
               Row(
                 children: [
                   const Text(
@@ -198,6 +195,42 @@ class _AdminDashboardPageState extends State<EmployeeDashboard> {
                   const SizedBox(width: 8),
                   _buildFilterChip('Completed'),
                   const Spacer(),
+                  // Export Master Excel Button
+                  Obx(() {
+                    final exportCtrl = Get.find<ExportController>();
+                    return ElevatedButton.icon(
+                      onPressed: exportCtrl.isExporting.value
+                          ? null
+                          : () async {
+                              await exportCtrl.exportMasterExcel();
+                            },
+                      icon: exportCtrl.isExporting.value
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : const Icon(Icons.download),
+                      label: Text(
+                        exportCtrl.isExporting.value
+                            ? 'Exporting...'
+                            : 'Export Master Excel',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[600],
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(width: 8),
                   if (_selectedStatuses.isNotEmpty)
                     TextButton.icon(
                       onPressed: () {
