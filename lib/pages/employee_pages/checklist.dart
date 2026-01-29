@@ -1146,6 +1146,11 @@ class _SubmitBar extends StatelessWidget {
         executorSubmitted &&
         onRevert != null;
 
+    // Reviewer can only submit/revert when executor has submitted
+    final canReviewerSubmit = role == 'reviewer'
+        ? (canEdit && executorSubmitted)
+        : canEdit;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       color: Colors.white,
@@ -1166,7 +1171,7 @@ class _SubmitBar extends StatelessWidget {
             Row(
               children: [
                 ElevatedButton.icon(
-                  onPressed: canEdit ? onSubmit : null,
+                  onPressed: canReviewerSubmit ? onSubmit : null,
                   icon: const Icon(Icons.send),
                   label: Text(
                     'Submit ${role[0].toUpperCase()}${role.substring(1)} Checklist',
