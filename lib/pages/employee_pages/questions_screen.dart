@@ -1,28 +1,20 @@
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 import 'package:quality_review/controllers/auth_controller.dart';
 import 'package:quality_review/pages/employee_pages/checklist.dart';
 import 'package:quality_review/pages/employee_pages/checklist_controller.dart';
 import 'package:quality_review/services/approval_service.dart';
 import 'package:quality_review/services/phase_checklist_service.dart';
 import 'package:quality_review/services/template_service.dart';
-import 'package:flutter/material.dart';
-import 'dart:typed_data';
-import 'package:file_picker/file_picker.dart';
-import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:get/get.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-// import 'package:url_launcher/url_launcher.dart';
-import 'checklist_controller.dart';
-import '../../controllers/auth_controller.dart';
-import '../../services/approval_service.dart';
-import '../../services/stage_service.dart';
-import '../../services/phase_checklist_service.dart';
-import '../../services/project_checklist_service.dart';
-import '../../services/template_service.dart';
-import '../../services/defect_categorization_service.dart';
+import 'package:quality_review/services/stage_service.dart';
+import 'package:quality_review/services/project_checklist_service.dart';
+import 'package:quality_review/services/defect_categorization_service.dart';
 
 class QuestionsScreen extends StatefulWidget {
   final String projectId;
@@ -1485,6 +1477,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                           ),
                           onAnswer: (subQ, ans) async {
                             setState(() => executorAnswers[subQ] = ans);
+
+                            // Save to checklist answers
                             await checklistCtrl.setAnswer(
                               widget.projectId,
                               _selectedPhase,
@@ -1492,6 +1486,49 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                               subQ,
                               ans,
                             );
+
+                            // Also update the checkpoint with category and severity if available
+                            // Find checkpoint ID from the checklist Questions structure
+                            String? checkpointId;
+                            for (final q in checklist) {
+                              final sub = q.subQuestions.firstWhereOrNull(
+                                (s) =>
+                                    (s['text'] ?? '') == subQ ||
+                                    (s['id'] ?? '') == subQ,
+                              );
+                              if (sub != null) {
+                                checkpointId = (sub['id'] ?? '').toString();
+                                break;
+                              }
+                            }
+
+                            if (checkpointId != null &&
+                                checkpointId.isNotEmpty) {
+                              final categoryId =
+                                  _selectedDefectCategory[checkpointId];
+                              final severity =
+                                  _selectedDefectSeverity[checkpointId];
+
+                              try {
+                                final checklistService =
+                                    Get.find<PhaseChecklistService>();
+                                await checklistService.updateCheckpointResponse(
+                                  checkpointId,
+                                  executorResponse: {
+                                    'answer': ans['answer'],
+                                    'remark': ans['remark'] ?? '',
+                                  },
+                                  categoryId: categoryId,
+                                  severity: severity,
+                                );
+                                print(
+                                  '✓ Updated checkpoint $checkpointId with category=$categoryId, severity=$severity',
+                                );
+                              } catch (e) {
+                                print('⚠️ Failed to update checkpoint: $e');
+                              }
+                            }
+
                             _recomputeDefects();
                           },
                           onRevert:
@@ -1549,6 +1586,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                           ),
                           onAnswer: (subQ, ans) async {
                             setState(() => reviewerAnswers[subQ] = ans);
+
+                            // Save to checklist answers
                             await checklistCtrl.setAnswer(
                               widget.projectId,
                               _selectedPhase,
@@ -1556,6 +1595,49 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                               subQ,
                               ans,
                             );
+
+                            // Also update the checkpoint with category and severity if available
+                            // Find checkpoint ID from the checklist Questions structure
+                            String? checkpointId;
+                            for (final q in checklist) {
+                              final sub = q.subQuestions.firstWhereOrNull(
+                                (s) =>
+                                    (s['text'] ?? '') == subQ ||
+                                    (s['id'] ?? '') == subQ,
+                              );
+                              if (sub != null) {
+                                checkpointId = (sub['id'] ?? '').toString();
+                                break;
+                              }
+                            }
+
+                            if (checkpointId != null &&
+                                checkpointId.isNotEmpty) {
+                              final categoryId =
+                                  _selectedDefectCategory[checkpointId];
+                              final severity =
+                                  _selectedDefectSeverity[checkpointId];
+
+                              try {
+                                final checklistService =
+                                    Get.find<PhaseChecklistService>();
+                                await checklistService.updateCheckpointResponse(
+                                  checkpointId,
+                                  reviewerResponse: {
+                                    'answer': ans['answer'],
+                                    'remark': ans['remark'] ?? '',
+                                  },
+                                  categoryId: categoryId,
+                                  severity: severity,
+                                );
+                                print(
+                                  '✓ Updated checkpoint $checkpointId with category=$categoryId, severity=$severity',
+                                );
+                              } catch (e) {
+                                print('⚠️ Failed to update checkpoint: $e');
+                              }
+                            }
+
                             _recomputeDefects();
                           },
                           // Only show revert button to actual reviewers
